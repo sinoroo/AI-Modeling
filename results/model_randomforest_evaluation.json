@@ -1,0 +1,35 @@
+{
+  "model_name": "RandomForest",
+  "timestamp": "2026-06-10T17:11:02.346635",
+  "metrics": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "roc_auc": 1.0
+  },
+  "confusion_matrix": [
+    [
+      18,
+      0
+    ],
+    [
+      0,
+      9
+    ]
+  ],
+  "predictions_count": 27,
+  "files": {
+    "confusion_matrix_plot": "cm_RandomForest.png",
+    "roc_curve_plot": "roc_RandomForest.png"
+  },
+  "probabilities": {
+    "shape": [
+      27,
+      2
+    ],
+    "min": 0.0,
+    "max": 1.0,
+    "mean": 0.5
+  }
+}
