@@ -7,3 +7,7 @@ matplotlib>=3.7.0
 seaborn>=0.13.0
 scipy>=1.11.0
 pyserial>=3.5
+
+# MLflow and BentoML for model management
+mlflow>=2.0.0
+bentoml>=1.1.0

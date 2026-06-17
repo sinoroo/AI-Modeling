@@ -21,6 +21,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from . import config
 from . import evaluation
+from . import mlflow_utils
 
 
 # ============================================================================
@@ -339,7 +340,8 @@ def train_all_models(X_train: np.ndarray,
                      y_train: np.ndarray,
                      X_val: np.ndarray,
                      y_val: np.ndarray,
-                     model_names: list = None) -> Dict[str, Any]:
+                     model_names: list = None,
+                     mlflow_tracker: mlflow_utils.MLflowTracker = None) -> Dict[str, Any]:
     """
     Train all models and return results.
 
@@ -349,6 +351,7 @@ def train_all_models(X_train: np.ndarray,
         X_val: Validation features
         y_val: Validation labels
         model_names: List of models to train
+        mlflow_tracker: MLflow tracker instance
 
     Returns:
         Dictionary with trained models and evaluations
@@ -362,50 +365,92 @@ def train_all_models(X_train: np.ndarray,
 
     # Classical ML Models
     if "RandomForest" in model_names:
+        if mlflow_tracker:
+            # Log with model-specific prefix to avoid parameter conflicts
+            params = {f"RandomForest_{k}": v for k, v in config.CLASSICAL_MODELS.get("RandomForest", {}).items()}
+            mlflow_tracker.log_params(params)
+        
         model = ClassicalModelTrainer.train_random_forest(X_train, y_train)
         models["RandomForest"] = model
         
         X_train_flat = X_train.reshape(X_train.shape[0], -1)
         y_pred = model.predict(X_train_flat)
+        acc = accuracy_score(y_train, y_pred)
         results["RandomForest"] = {
-            "train_acc": accuracy_score(y_train, y_pred),
+            "train_acc": acc,
         }
+        
+        if mlflow_tracker:
+            mlflow_tracker.log_metrics({"train_accuracy": acc})
+            mlflow_tracker.log_sklearn_model(model, "RandomForest")
 
     if "IsolationForest" in model_names:
+        if mlflow_tracker:
+            params = {f"IsolationForest_{k}": v for k, v in config.CLASSICAL_MODELS.get("IsolationForest", {}).items()}
+            mlflow_tracker.log_params(params)
+        
         X_train_flat = X_train.reshape(X_train.shape[0], -1)
         model = ClassicalModelTrainer.train_isolation_forest(X_train_flat)
         models["IsolationForest"] = model
         
         y_pred = model.predict(X_train_flat)
         y_pred = np.where(y_pred == -1, 1, 0)  # Convert to binary
+        acc = accuracy_score(np.where(y_train == 0, 0, 1), y_pred)
         results["IsolationForest"] = {
-            "train_acc": accuracy_score(np.where(y_train == 0, 0, 1), y_pred),
+            "train_acc": acc,
         }
+        
+        if mlflow_tracker:
+            mlflow_tracker.log_metrics({"IsolationForest_accuracy": acc})
+            mlflow_tracker.log_sklearn_model(model, "IsolationForest")
 
     if "OneClassSVM" in model_names:
+        if mlflow_tracker:
+            params = {f"OneClassSVM_{k}": v for k, v in config.CLASSICAL_MODELS.get("OneClassSVM", {}).items()}
+            mlflow_tracker.log_params(params)
+        
         X_train_flat = X_train.reshape(X_train.shape[0], -1)
         model = ClassicalModelTrainer.train_one_class_svm(X_train_flat)
         models["OneClassSVM"] = model
         
         y_pred = model.predict(X_train_flat)
         y_pred = np.where(y_pred == -1, 1, 0)
+        acc = accuracy_score(np.where(y_train == 0, 0, 1), y_pred)
         results["OneClassSVM"] = {
-            "train_acc": accuracy_score(np.where(y_train == 0, 0, 1), y_pred),
+            "train_acc": acc,
         }
+        
+        if mlflow_tracker:
+            mlflow_tracker.log_metrics({"OneClassSVM_accuracy": acc})
+            mlflow_tracker.log_sklearn_model(model, "OneClassSVM")
 
     # Deep Learning Models
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[Training] Using device: {device}")
 
     if "Autoencoder" in model_names:
+        if mlflow_tracker:
+            params = {f"Autoencoder_{k}": v for k, v in config.DL_MODELS.get("Autoencoder", {}).items()}
+            mlflow_tracker.log_params(params)
+        
         model = DeepLearningTrainer.train_autoencoder(X_train, X_val, device=device)
         models["Autoencoder"] = model
         results["Autoencoder"] = {"status": "trained"}
+        
+        if mlflow_tracker:
+            mlflow_tracker.log_pytorch_model(model, "Autoencoder")
 
     if "LSTM" in model_names:
+        if mlflow_tracker:
+            params = {f"LSTM_{k}": v for k, v in config.DL_MODELS.get("LSTM", {}).items()}
+            mlflow_tracker.log_params(params)
+        
         model = DeepLearningTrainer.train_lstm(X_train, X_val, device=device)
         models["LSTM"] = model
         results["LSTM"] = {"status": "trained"}
+        
+        if mlflow_tracker:
+            mlflow_tracker.log_pytorch_model(model, "LSTM")
 
     return models, results
 

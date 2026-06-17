@@ -1,0 +1,16 @@
+{
+  "features": [
+    "vibration"
+  ],
+  "label": "label",
+  "feature_count": 1,
+  "window_size": 64,
+  "normalize_method": "standardize",
+  "missing_value_method": "interpolate",
+  "metadata": {
+    "data_source": "pump_motor_system",
+    "window_size": 64,
+    "normalize_method": "standardize"
+  },
+  "version": "1.0"
+}

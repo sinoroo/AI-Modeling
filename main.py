@@ -25,64 +25,10 @@ from anomaly_detection import (
     evaluation,
     inference_serial,
 )
-
-
-def create_sample_data():
-    """Create sample synthetic data for demonstration."""
-    print("\n" + "="*80)
-    print("CREATING SAMPLE DATA")
-    print("="*80)
-
-    # Create data directory
-    Path(config.DATA_DIR).mkdir(parents=True, exist_ok=True)
-
-    # Number of samples
-    n_train = 1000
-    n_val = 300
-    n_test = 300
-
-    def generate_normal_data(n_samples: int, n_features: int = 5):
-        """Generate normal operating data."""
-        data = {}
-        for i in range(n_features):
-            data[f"sensor_{i}"] = np.random.normal(loc=50, scale=10, size=n_samples)
-        data["label"] = 0  # Normal
-        return pd.DataFrame(data)
-
-    def generate_anomaly_data(n_samples: int, n_features: int = 5):
-        """Generate anomalous data."""
-        data = {}
-        for i in range(n_features):
-            data[f"sensor_{i}"] = np.random.normal(loc=100, scale=20, size=n_samples)
-        data["label"] = 1  # Anomaly
-        return pd.DataFrame(data)
-
-    # Generate splits
-    train_normal = generate_normal_data(int(n_train * 0.8))
-    train_anomaly = generate_anomaly_data(int(n_train * 0.2))
-    train_data = pd.concat([train_normal, train_anomaly], ignore_index=True)
-    train_data = train_data.sample(frac=1).reset_index(drop=True)
-
-    val_normal = generate_normal_data(int(n_val * 0.8))
-    val_anomaly = generate_anomaly_data(int(n_val * 0.2))
-    val_data = pd.concat([val_normal, val_anomaly], ignore_index=True)
-    val_data = val_data.sample(frac=1).reset_index(drop=True)
-
-    test_normal = generate_normal_data(int(n_test * 0.8))
-    test_anomaly = generate_anomaly_data(int(n_test * 0.2))
-    test_data = pd.concat([test_normal, test_anomaly], ignore_index=True)
-    test_data = test_data.sample(frac=1).reset_index(drop=True)
-
-    # Save to CSV
-    train_data.to_csv(config.TRAIN_DATA_PATH, index=False)
-    val_data.to_csv(config.VAL_DATA_PATH, index=False)
-    test_data.to_csv(config.TEST_DATA_PATH, index=False)
-
-    print(f"✓ Training data: {config.TRAIN_DATA_PATH} ({len(train_data)} samples)")
-    print(f"✓ Validation data: {config.VAL_DATA_PATH} ({len(val_data)} samples)")
-    print(f"✓ Test data: {config.TEST_DATA_PATH} ({len(test_data)} samples)")
-
-    return train_data, val_data, test_data
+from integration import (
+    MLflowTracker,
+    FeatureStore,
+)
 
 
 def run_eda(data_path: str = None):
@@ -92,7 +38,10 @@ def run_eda(data_path: str = None):
     print("="*80)
 
     if data_path is None:
-        data_path = config.TRAIN_DATA_PATH
+        data_path = config.TRAIN_DATA_DIR
+
+    if not data_path:
+        raise ValueError("No data path provided. Specify data_path or configure TRAIN_DATA_DIR")
 
     # Load and analyze data
     loader = data_loader.DataLoader(data_path)
@@ -108,36 +57,58 @@ def run_training_pipeline(
     train_path: str = None,
     val_path: str = None, 
     test_path: str = None,
-    use_new_format: bool = None
+    use_mlflow: bool = True
 ):
     """
-    Run complete training pipeline.
+    Run complete training pipeline with MLflow tracking.
     
     Args:
-        train_path: Path to training data (file or directory)
-        val_path: Path to validation data (file or directory)
-        test_path: Path to test data (file or directory)
-        use_new_format: Whether to use new CSV format (9 lines metadata)
+        train_path: Path to training data directory
+        val_path: Path to validation data directory
+        test_path: Path to test data directory
+        use_mlflow: Enable MLflow tracking
     """
     print("\n" + "="*80)
     print("ANOMALY DETECTION TRAINING PIPELINE")
     print("="*80)
 
+    # Initialize MLflow
+    mlflow_tracker = None
+    if use_mlflow:
+        mlflow_tracker = MLflowTracker(
+            experiment_name="anomaly_detection",
+            tracking_uri="sqlite:///integration/mlflow.db"
+        )
+        run_id = mlflow_tracker.start_run(
+            run_name="training_run",
+            tags={
+                "model_type": "ensemble",
+                "task": "anomaly_detection",
+                "dataset": "pump_motor_system"
+            }
+        )
+        print(f"[MLflow] Experiment tracking started with run ID: {run_id}")
+
+    # Initialize Feature Store
+    fs = FeatureStore(store_dir="integration/feature_store")
+
     # Use provided paths or fall back to config defaults
-    train_path = train_path or config.TRAIN_DATA_DIR or config.TRAIN_DATA_PATH
-    val_path = val_path or config.VAL_DATA_DIR or config.VAL_DATA_PATH
-    test_path = test_path or config.TEST_DATA_DIR or config.TEST_DATA_PATH
-    use_new_format = use_new_format if use_new_format is not None else config.USE_NEW_CSV_FORMAT
+    train_path = train_path or config.TRAIN_DATA_DIR
+    val_path = val_path or config.VAL_DATA_DIR
+    test_path = test_path or config.TEST_DATA_DIR
+
+    if not all([train_path, val_path, test_path]):
+        raise ValueError("Data paths not configured. Check config.TRAIN_DATA_DIR, VAL_DATA_DIR, TEST_DATA_DIR")
 
     # Step 1: Load data
     print("\n[Step 1] Loading data...")
-    loader_train = data_loader.DataLoader(use_new_format=use_new_format)
+    loader_train = data_loader.DataLoader()
     train_df = loader_train.load_data(train_path)
     
-    loader_val = data_loader.DataLoader(use_new_format=use_new_format)
+    loader_val = data_loader.DataLoader()
     val_df = loader_val.load_data(val_path)
     
-    loader_test = data_loader.DataLoader(use_new_format=use_new_format)
+    loader_test = data_loader.DataLoader()
     test_df = loader_test.load_data(test_path)
 
     # Step 2: Analyze data and extract features
@@ -146,6 +117,26 @@ def run_training_pipeline(
     analysis = loader.analyze_columns()
     feature_cols = analysis["feature_cols"]
     label_col = analysis["label_col"]
+
+    # Create and log feature schema
+    print("\n[Step 2b] Creating feature schema...")
+    schema = fs.create_schema(
+        feature_cols=feature_cols,
+        label_col=label_col,
+        metadata={
+            "data_source": "pump_motor_system",
+            "window_size": config.WINDOW_SIZE,
+            "normalize_method": config.NORMALIZE_METHOD
+        }
+    )
+    
+    # Compute and log feature statistics
+    print("[Step 2c] Computing feature statistics...")
+    stats = fs.compute_statistics(train_df, feature_cols)
+    
+    if mlflow_tracker:
+        mlflow_tracker.log_feature_schema(schema, "feature_schema")
+        mlflow_tracker.log_dict(stats, "feature_statistics")
 
     # Step 3: Preprocess data
     print("\n[Step 3] Preprocessing data...")
@@ -165,11 +156,24 @@ def run_training_pipeline(
     print(f"  Validation: {X_val.shape}")
     print(f"  Test: {X_test.shape}")
 
+    # Log preprocessing parameters
+    if mlflow_tracker:
+        mlflow_tracker.log_params({
+            "window_size": config.WINDOW_SIZE,
+            "normalize_method": config.NORMALIZE_METHOD,
+            "missing_value_method": config.MISSING_VALUE_METHOD,
+            "train_samples": X_train.shape[0],
+            "val_samples": X_val.shape[0],
+            "test_samples": X_test.shape[0],
+            "feature_count": len(feature_cols)
+        })
+
     # Step 4: Train models
     print("\n[Step 4] Training models...")
     models, train_results = model_training.train_all_models(
         X_train, y_train, X_val, y_val,
-        model_names=["RandomForest", "IsolationForest", "OneClassSVM", "Autoencoder", "LSTM"]
+        model_names=["RandomForest", "IsolationForest", "OneClassSVM", "Autoencoder", "LSTM"],
+        mlflow_tracker=mlflow_tracker
     )
 
     # Step 5: Save models
@@ -199,14 +203,37 @@ def run_training_pipeline(
                 model, X_test, y_test, model_name
             )
         evaluation_results[model_name] = result
+        
+        # Log evaluation metrics to MLflow
+        if mlflow_tracker and isinstance(result, dict):
+            metrics_to_log = {
+                f"{model_name}_accuracy": result.get("accuracy"),
+                f"{model_name}_precision": result.get("precision"),
+                f"{model_name}_recall": result.get("recall"),
+                f"{model_name}_f1": result.get("f1")
+            }
+            mlflow_tracker.log_metrics({k: v for k, v in metrics_to_log.items() if v is not None})
 
     # Step 7: Compare models
     print("\n[Step 7] Model comparison...")
     comparison_df = evaluation.compare_models(evaluation_results)
+    
+    if mlflow_tracker:
+        mlflow_tracker.log_dict(evaluation_results, "evaluation_results")
 
     # Step 8: Generate report
     print("\n[Step 8] Generating report...")
     evaluation.generate_evaluation_report(evaluation_results, "evaluation_report.json")
+
+    # Find best model
+    best_model_name = comparison_df.iloc[0]['Model'] if not comparison_df.empty else list(models.keys())[0]
+    print(f"\n[Step 9] Best model: {best_model_name}")
+    if mlflow_tracker:
+        mlflow_tracker.log_params({"best_model": best_model_name})
+
+    # End MLflow run
+    if mlflow_tracker:
+        mlflow_tracker.end_run()
 
     print("\n" + "="*80)
     print("✓ TRAINING PIPELINE COMPLETE")
@@ -271,7 +298,6 @@ def main():
     parser.add_argument("--train", action="store_true", help="Run training pipeline")
     parser.add_argument("--eda", action="store_true", help="Run EDA only")
     parser.add_argument("--infer", action="store_true", help="Run inference demo")
-    parser.add_argument("--generate-data", action="store_true", help="Generate sample data")
     
     # Data path arguments
     parser.add_argument("--train-path", type=str, default=None, 
@@ -287,40 +313,37 @@ def main():
     parser.add_argument("--test-dir", type=str, default=None,
                        help="Directory with test CSV files (alternative to --test-path)")
     
-    # Format arguments
-    parser.add_argument("--new-format", action="store_true", default=None,
-                       help="Use new CSV format (9 lines metadata + data from line 10)")
-    parser.add_argument("--legacy-format", action="store_true", 
-                       help="Use legacy CSV format (single header line + data)")
-    
     args = parser.parse_args()
     
     # Resolve data paths (dirs have priority over paths if both specified)
     train_path = args.train_dir or args.train_path
     val_path = args.val_dir or args.val_path
     test_path = args.test_dir or args.test_path
-    
-    # Resolve format
-    use_new_format = None
-    if args.new_format:
-        use_new_format = True
-    elif args.legacy_format:
-        use_new_format = False
 
-    # If no arguments, run full pipeline with defaults
-    if not (args.train or args.eda or args.infer or args.generate_data):
-        args.generate_data = True
-        args.train = True
-        args.infer = True
+    # If no arguments, show help and exit
+    if not (args.train or args.eda or args.infer):
+        print("[INFO] No command specified. Use --help for usage instructions.")
+        print("[INFO] Available commands:")
+        print("  python main.py --train              # Run training pipeline")
+        print("  python main.py --eda                # Run EDA only")
+        print("  python main.py --infer              # Run inference demo")
+        print("  python main.py --train --eda --infer  # Run all")
+        print("\n[INFO] Data location: data_new_format/")
+        print("       - data_new_format/train/  (training data)")
+        print("       - data_new_format/val/    (validation data)")
+        print("       - data_new_format/test/   (test data)")
+        sys.exit(0)
     
-    # If no data paths specified and not generating data, generate it
-    if not train_path and not args.generate_data and args.train:
-        print("[INFO] No data paths specified. Generating sample data...")
-        args.generate_data = True
-
-    # Generate sample data if needed
-    if args.generate_data:
-        create_sample_data()
+    # Validate data paths for training
+    if args.train and not all([train_path or config.TRAIN_DATA_DIR, 
+                                val_path or config.VAL_DATA_DIR, 
+                                test_path or config.TEST_DATA_DIR]):
+        print("\n[ERROR] Training data not found!")
+        print("[INFO] Please ensure data exists in data_new_format/ folder:")
+        print("       - data_new_format/train/")
+        print("       - data_new_format/val/")
+        print("       - data_new_format/test/")
+        sys.exit(1)
 
     # Run EDA
     if args.eda or (args.train and not train_path):
@@ -332,8 +355,7 @@ def main():
         models, preprocessor, evaluation_results = run_training_pipeline(
             train_path=train_path,
             val_path=val_path,
-            test_path=test_path,
-            use_new_format=use_new_format
+            test_path=test_path
         )
 
     # Run inference

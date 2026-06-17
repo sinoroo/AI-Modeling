@@ -13,19 +13,17 @@ from pathlib import Path
 # ============================================================================
 
 # Data paths - can be overridden from command line or environment variables
-DATA_DIR = os.getenv("DATA_DIR", "data")
+DATA_DIR = os.getenv("DATA_DIR", "data_new_format")
 
-# Support both single file paths and directory paths
-# For single file paths: specify train/val/test paths directly
-# For directory paths: specify TRAIN_DATA_DIR/VAL_DATA_DIR to scan all CSV files in those directories
-TRAIN_DATA_PATH = os.getenv("TRAIN_DATA_PATH", os.path.join(DATA_DIR, "train.csv"))
-VAL_DATA_PATH = os.getenv("VAL_DATA_PATH", os.path.join(DATA_DIR, "val.csv"))
-TEST_DATA_PATH = os.getenv("TEST_DATA_PATH", os.path.join(DATA_DIR, "test.csv"))
+# Directory-based data paths (scan all CSV files in those directories)
+TRAIN_DATA_DIR = os.getenv("TRAIN_DATA_DIR", os.path.join(DATA_DIR, "train"))
+VAL_DATA_DIR = os.getenv("VAL_DATA_DIR", os.path.join(DATA_DIR, "val"))
+TEST_DATA_DIR = os.getenv("TEST_DATA_DIR", os.path.join(DATA_DIR, "test"))
 
-# Directory-based data paths (alternative to single files, can contain multiple CSV files)
-TRAIN_DATA_DIR = os.getenv("TRAIN_DATA_DIR", None)  # If set, scan this directory for all CSV files
-VAL_DATA_DIR = os.getenv("VAL_DATA_DIR", None)      # If set, scan this directory for all CSV files
-TEST_DATA_DIR = os.getenv("TEST_DATA_DIR", None)    # If set, scan this directory for all CSV files
+# Legacy: single file paths (deprecated - not used with new format)
+TRAIN_DATA_PATH = os.getenv("TRAIN_DATA_PATH", None)
+VAL_DATA_PATH = os.getenv("VAL_DATA_PATH", None)
+TEST_DATA_PATH = os.getenv("TEST_DATA_PATH", None)
 
 # Create data directory if it doesn't exist
 Path(DATA_DIR).mkdir(parents=True, exist_ok=True)

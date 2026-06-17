@@ -78,76 +78,168 @@ A **production-ready, end-to-end anomaly detection system** for industrial pump 
 - [x] Thread-based background data reading
 - [x] Low-latency inference system
 
-### Phase 8: Main Orchestrator (main.py)
-- [x] Unified pipeline management
-- [x] Sample data generation (synthetic training data)
-- [x] Command-line interface:
-  - `--train`: Full training pipeline
-  - `--eda`: EDA only
-  - `--infer`: Inference demo
-  - `--generate-data`: Data generation
-- [x] Default execution (full pipeline)
+### Phase 8: Data Format Migration (NEW!)
+- [x] Legacy CSV format → New format migration
+- [x] New format structure: 9-line metadata + sensor data (line 10+)
+- [x] Directory-based data organization (data_new_format/)
+- [x] Auto-detection of train/val/test directories
+- [x] Updated data_loader.py for new format only
+- [x] Backward compatibility removed (cleaner codebase)
+
+### Phase 9: Project Reorganization (NEW!)
+- [x] Created `analysis/` folder for data analysis tools
+- [x] Created `integration/` folder for MLflow/BentoML modules
+- [x] Created `util/` folder for utilities and tests
+- [x] Updated all import paths across codebase
+- [x] Centralized feature and model management
+
+### Phase 10: MLflow & BentoML Integration (NEW!)
+- [x] MLflow tracking with SQLite backend (integration/mlflow.db)
+- [x] Feature Store for consistent preprocessing
+- [x] BentoML REST API service
+- [x] Model registry and versioning
+- [x] Experiment tracking and comparison
+
+### Phase 11: Main Orchestrator (main.py)
+- [x] Unified pipeline management with new folder structure
+- [x] Auto-detection of data_new_format/ directories
+- [x] MLflow tracking of all experiments
+- [x] Feature Store integration
+- [x] Command-line interface (--train, --eda, --infer)
 - [x] Error handling and logging
 
-### Phase 9: Documentation
-- [x] Comprehensive README.md
-- [x] QUICK_START.py guide
-- [x] Inline code documentation
-- [x] Configuration comments
-- [x] Usage examples
-
-### Phase 10: Testing & Verification
-- [x] Setup verification script (test_setup.py)
-- [x] Import verification
-- [x] Data generation verification
-- [x] Package import validation
-- [x] End-to-end pipeline testing
+### Phase 12: Documentation & Testing
+- [x] Comprehensive README.md with new structure
+- [x] Updated PROJECT_STRUCTURE.md
+- [x] Updated DELIVERY_SUMMARY.md
+- [x] verify_system.py for environment validation
+- [x] All documentation reflects new file organization
 
 ---
 
-## 📁 Complete File Listing
+## 📁 Project Structure (Updated)
 
 ```
 c:\workspace\python\AI-Modeling/
-├── venv/                                    # Virtual environment
-├── data/                                    # Data directory
-│   ├── train.csv                           # ✓ Generated (1000 samples)
-│   ├── val.csv                             # ✓ Generated (300 samples)
-│   └── test.csv                            # ✓ Generated (300 samples)
-├── anomaly_detection/                       # Main package
-│   ├── __init__.py                         # Package initialization
-│   ├── config.py                           # Configuration hub
-│   ├── data_loader.py                      # Data loading & EDA
-│   ├── preprocessing.py                    # Data preprocessing
-│   ├── model_training.py                   # Model training
-│   ├── evaluation.py                       # Model evaluation
-│   └── inference_serial.py                 # Serial inference
-├── main.py                                  # Main orchestrator
-├── test_setup.py                            # Setup verification
-├── QUICK_START.py                           # Quick start guide
-├── README.md                                # Full documentation
-├── requirements.txt                        # Python dependencies
-└── [Output Directories Created on Run]
-    ├── models/                              # Trained models
-    ├── eda_results/                        # EDA visualizations
-    ├── results/                            # Evaluation results
-    └── logs/                                # Logging
-```
+│
+├── 📂 anomaly_detection/                   # Core ML package
+│   ├── __init__.py
+│   ├── config.py                          # Central config (data_new_format)
+│   ├── data_loader.py                     # New format data loading
+│   ├── preprocessing.py
+│   ├── model_training.py
+│   ├── evaluation.py
+│   └── inference_serial.py
+│
+├── 📂 analysis/                            # Data analysis tools
+│   ├── analyze_3d_array.py
+│   ├── analyze_2d_data.py
+│   └── ml_input_examples.py
+│
+├── 📂 integration/                         # MLflow + BentoML
+│   ├── __init__.py
+│   ├── mlflow_utils.py
+│   ├── bentoml_service.py
+│   ├── feature_store.py
+│   ├── mlflow.db                          # SQLite backend
+│   └── mlruns/                            # Experiment logs
+│
+├── 📂 util/                                # Utilities
+│   ├── serial_data_simulator.py
+│   ├── test_serial_inference.py
+│   ├── verify_system.py
+│   └── migrate_mlflow.py
+│
+├── 📂 data_new_format/                     # Training data (NEW FORMAT)
+│   ├── train/
+│   ├── val/
+│   └── test/
+│
+├── 📂 models/                              # Trained models
+├── 📂 results/                             # Evaluation results
+├── 📂 eda_results/                         # EDA visualizations
+├── 📂 logs/                                # Logging
+│
+├── main.py                                 # Pipeline orchestrator
+├── requirements.txt                        # Dependencies
+├── README.md
+├── PROJECT_STRUCTURE.md
+├── DELIVERY_SUMMARY.md
+└── venv/                                   # Virtual environment
 
-**File Count: 13 main files + auto-generated outputs**
+**Total: 4 core folders + 5 output folders + root files**
+```
 
 ---
 
-## 🔧 Configuration System
+## 🔄 Data Format Migration
+
+### Legacy CSV Format → New Format
+
+**Legacy Format (Deprecated):**
+```
+feature1,feature2,feature3,label
+1.0,2.0,3.0,0
+1.1,2.1,3.1,0
+```
+
+**New Format (Current):**
+```
+9-line metadata header:
+Line 1: data_format_version=2.0
+Line 2: source=pump_motor_sensor
+Line 3: sampling_rate_hz=10000
+Line 4: timestamp=2024-01-01T12:00:00Z
+Line 5: num_channels=1
+Line 6: channel_name=vibration
+Line 7: sample_count=640
+Line 8: label=normal/anomaly
+Line 9: description=monitored_equipment=pump_A
+
+Data starts from line 10:
+1.234
+1.245
+1.256
+... (640 samples)
+```
+
+### Migration Benefits
+✅ Self-describing data files (metadata in headers)
+✅ Version control for data format changes
+✅ Consistent preprocessing across all files
+✅ Easy integration with MLflow tracking
+✅ Simplified data_loader.py (no format switching)
+
+---
+
+## 🔧 Updated Configuration
 
 ### Core Settings (anomaly_detection/config.py)
 
 ```python
-# Data Configuration
-DATA_DIR = "data"
-TRAIN_DATA_PATH = "data/train.csv"
-VAL_DATA_PATH = "data/val.csv"
-TEST_DATA_PATH = "data/test.csv"
+# Data Configuration (NEW FORMAT)
+DATA_DIR = "data_new_format"
+TRAIN_DATA_DIR = os.path.join(DATA_DIR, "train")
+VAL_DATA_DIR = os.path.join(DATA_DIR, "val")
+TEST_DATA_DIR = os.path.join(DATA_DIR, "test")
+
+# MLflow Configuration (NEW)
+MLFLOW_TRACKING_URI = "sqlite:///integration/mlflow.db"
+MLFLOW_ARTIFACT_PATH = "integration/mlruns"
+
+```python
+# Data Configuration (NEW FORMAT)
+DATA_DIR = "data_new_format"
+TRAIN_DATA_DIR = os.path.join(DATA_DIR, "train")
+VAL_DATA_DIR = os.path.join(DATA_DIR, "val")
+TEST_DATA_DIR = os.path.join(DATA_DIR, "test")
+
+# MLflow Configuration (NEW)
+MLFLOW_TRACKING_URI = "sqlite:///integration/mlflow.db"
+MLFLOW_ARTIFACT_PATH = "integration/mlruns"
+
+# Feature Store Configuration (NEW)
+FEATURE_STORE_PATH = "integration/feature_store"
 
 # Preprocessing
 WINDOW_SIZE = 64
@@ -181,6 +273,7 @@ ANOMALY_TYPES = {
     3: "Non-steady State",
     4: "Other",
 }
+```
 ```
 
 ---

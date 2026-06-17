@@ -1,10 +1,9 @@
 """
-Enhanced data loading module supporting both legacy and new CSV formats.
+Data loading module for new CSV format.
 
 Supports:
-- Legacy format: Single header line + data rows
 - New format: 9 lines of metadata + data from line 10 (time, vibration)
-- Single files or directory recursion with multiple CSV files
+- Directory recursion with multiple CSV files
 """
 
 import os
@@ -22,18 +21,16 @@ from . import config
 
 
 class DataLoader:
-    """Load and analyze pump/motor sensor data from multiple formats."""
+    """Load and analyze pump/motor sensor data from new format (metadata + vibration data)."""
 
-    def __init__(self, data_path: str = None, use_new_format: bool = None):
+    def __init__(self, data_path: str = None):
         """
         Initialize DataLoader.
 
         Args:
             data_path: Path to CSV file or directory containing CSV files
-            use_new_format: Whether to use new format (9 lines metadata + data). If None, auto-detect.
         """
         self.data_path = data_path
-        self.use_new_format = use_new_format if use_new_format is not None else config.USE_NEW_CSV_FORMAT
         self.data = None
         self.feature_cols = None
         self.label_col = None
@@ -94,22 +91,9 @@ class DataLoader:
         
         return data_df, metadata
 
-    def _parse_legacy_format_file(self, file_path: str) -> pd.DataFrame:
-        """
-        Parse legacy format CSV file (single header line + data).
-
-        Args:
-            file_path: Path to CSV file
-
-        Returns:
-            DataFrame with data
-        """
-        data_df = pd.read_csv(file_path)
-        return data_df
-
     def load_from_file(self, file_path: str) -> pd.DataFrame:
         """
-        Load data from a single CSV file.
+        Load data from a single CSV file (new format).
 
         Args:
             file_path: Path to CSV file
@@ -123,13 +107,9 @@ class DataLoader:
         print(f" [DataLoader] Loading data from {file_path}...")
 
         try:
-            if self.use_new_format:
-                self.data, self.metadata = self._parse_new_format_file(file_path)
-            else:
-                self.data = self._parse_legacy_format_file(file_path)
+            self.data, self.metadata = self._parse_new_format_file(file_path)
         except Exception as e:
-            print(f"  Warning: Failed to parse as new format, trying legacy format: {e}")
-            self.data = self._parse_legacy_format_file(file_path)
+            raise ValueError(f"Failed to parse CSV file in new format: {e}")
 
         print(f" [DataLoader] Data loaded: {self.data.shape}")
         return self.data
@@ -211,39 +191,9 @@ class DataLoader:
 
         print(" [DataLoader] Analyzing columns...")
 
-        # Identify label column
-        possible_label_cols = [
-            col
-            for col in self.data.columns
-            if "label" in col.lower() or "anomaly" in col.lower() or "target" in col.lower()
-        ]
-
-        self.label_col = possible_label_cols[0] if possible_label_cols else None
-
-        # Identify timestamp/time column
-        timestamp_col = None
-        possible_timestamp_cols = [
-            col
-            for col in self.data.columns
-            if col in ["time", "Time"] or "timestamp" in col.lower() or "date" in col.lower()
-        ]
-        if possible_timestamp_cols:
-            timestamp_col = possible_timestamp_cols[0]
-
-        # Features are numeric columns (excluding label, timestamp, vibration if it exists)
-        exclude_cols = {self.label_col, timestamp_col} - {None}
-        
-        # In new format, 'vibration' is the main feature
-        # In other cases, include all numeric columns
-        if self.use_new_format and 'vibration' in self.data.columns:
-            self.feature_cols = ['vibration']
-        else:
-            self.feature_cols = [
-                col
-                for col in self.data.columns
-                if self.data[col].dtype in [np.float64, np.float32, np.int64, np.int32]
-                and col not in exclude_cols
-            ]
+        # For new format, use 'label' column and 'vibration' feature
+        self.label_col = 'label'
+        self.feature_cols = ['vibration']
 
         analysis = {
             "total_rows": self.data.shape[0],
@@ -251,12 +201,12 @@ class DataLoader:
             "num_features": len(self.feature_cols),
             "feature_cols": self.feature_cols,
             "label_col": self.label_col,
-            "timestamp_col": timestamp_col,
+            "timestamp_col": 'time',
         }
 
         print(f"  Features: {len(self.feature_cols)} - {self.feature_cols}")
         print(f"  Label column: {self.label_col}")
-        print(f"  Timestamp column: {timestamp_col}")
+        print(f"  Timestamp column: time")
 
         return analysis
 

@@ -1,6 +1,6 @@
 {
   "model_name": "IsolationForest",
-  "timestamp": "2026-06-10T17:11:02.347863",
+  "timestamp": "2026-06-17T15:35:26.566152",
   "metrics": {
     "accuracy": 0.14814814814814814,
     "precision": 0.06060606060606061,

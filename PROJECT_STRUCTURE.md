@@ -9,91 +9,98 @@ AI-Modeling/
 │
 ├── 📂 anomaly_detection/              ← 핵심 ML 패키지
 │   ├── __init__.py                   
-│   ├── config.py                     ← ⚙️ 중앙 설정 파일 (모든 파라미터)
+│   ├── config.py                     ← ⚙️ 중앙 설정 파일 (data_new_format 기본)
+│   ├── data_loader.py                ← 📊 새 포맷 데이터 로딩 & EDA
 │   ├── preprocessing.py              ← 🔧 데이터 전처리 & 피처 엔지니어링
-│   ├── data_loader.py                ← 📊 데이터 로딩 & EDA
 │   ├── model_training.py             ← 🤖 모델 훈련 (Classical ML + DL)
 │   ├── evaluation.py                 ← 📈 평가 & 메트릭
 │   └── inference_serial.py           ← 🔴 실시간 시리얼 추론
 │
-├── 📂 🔴 Real-Time Inference (NEW!)
-│   ├── serial_data_simulator.py      ← 신호 생성기 (normal, spike, harmonic, drift)
-│   ├── test_serial_inference.py      ← 실시간 추론 테스트 엔진
-│   └── REALTIME_INFERENCE.md         ← 📖 시리얼 추론 완벽 가이드
-│
-├── 📂 📊 Analysis & Visualization
-│   ├── analyze_3d_array.py           ← 3D 배열 분석 도구
-│   ├── analyze_2d_data.py            ← 2D 배열 분석 도구
-│   ├── visualize_3d_array.py         ← 3D 시각화
+├── 📂 analysis/                       ← 데이터 분석 도구
+│   ├── analyze_3d_array.py           ← 3D 배열 분석
+│   ├── analyze_2d_data.py            ← 2D 배열 분석  
 │   ├── ml_input_examples.py          ← 입력 포맷 예제
-│   └── 3d_array_visualization.png    ← 결과 이미지
+│   ├── MODEL_IO_QUICK_REF.py         ← I/O 참조
+│   └── MODEL_IO_VISUALIZATION.md     ← 모델 시각화
+│
+├── 📂 integration/                    ← MLflow + BentoML 통합
+│   ├── mlflow_utils.py               ← MLflow 추적
+│   ├── bentoml_service.py            ← BentoML REST API
+│   ├── feature_store.py              ← Feature Store
+│   ├── mlflow_bentoml_example.py     ← 통합 예제
+│   ├── bentofile.yaml                ← BentoML 설정
+│   ├── mlflow.db                     ← MLflow 데이터베이스
+│   ├── mlruns/                       ← MLflow 실험 로그
+│   ├── feature_store/                ← Feature 스토어
+│   ├── INTEGRATION_SUMMARY.md        ← 통합 개요
+│   ├── MLFLOW_BENTOML_GUIDE.md       ← 상세 가이드
+│   ├── QUICK_START_MLFLOW_BENTOML.md ← 빠른 시작
+│   └── MLFLOW_FILESTORE_MIGRATION.md ← 마이그레이션
+│
+├── 📂 util/                           ← 유틸리티 & 테스트
+│   ├── serial_data_simulator.py      ← 신호 생성기
+│   ├── test_serial_inference.py      ← 실시간 추론 테스트
+│   ├── verify_system.py              ← 시스템 검증
+│   ├── migrate_mlflow.py             ← MLflow 마이그레이션
+│   ├── QUICK_START.py                ← 대화형 가이드
+│   ├── REALTIME_INFERENCE.md         ← 시리얼 추론 가이드
+│   ├── realtime_inference_results.png ← 추론 결과 이미지
+│   └── synthetic_test_data.csv       ← 테스트 데이터
 │
 ├── 📂 📖 Documentation
 │   ├── README.md                     ← 📌 프로젝트 개요 (START HERE!)
-│   ├── REALTIME_INFERENCE.md         ← 🔴 시리얼 추론 가이드
-│   ├── 3D_ARRAY_EXPLAINED.md         ← 3D 배열 상세설명
-│   ├── 3D_ARRAY_COMPLETE_GUIDE.md    ← 3D 배열 실용 가이드
-│   ├── FEATURES_EXPLANATION.md       ← 피처 설명 & 중요도
-│   ├── MODEL_IO_FORMAT.md            ← 입출력 형식 명세
-│   ├── MODEL_IO_VISUALIZATION.md     ← 모델 시각화
-│   └── PROJECT_STRUCTURE.md          ← 이 파일
+│   ├── PROJECT_STRUCTURE.md          ← 이 파일
+│   ├── DELIVERY_SUMMARY.md           ← 프로젝트 요약
+│   ├── 3D_ARRAY_EXPLAINED.md         ← 3D 배열 설명
+│   ├── 3D_ARRAY_COMPLETE_GUIDE.md    ← 3D 배열 가이드
+│   ├── FEATURES_EXPLANATION.md       ← 피처 설명
+│   └── MODEL_IO_FORMAT.md            ← I/O 포맷 명세
 │
-├── 📂 🔧 Quick Start
-│   ├── QUICK_START.py                ← 🚀 대화형 가이드 (v2.0)
-│   └── main.py                       ← 전체 파이프라인 오케스트레이터
+├── 📂 Data (data_new_format/)        ← 새 포맷 데이터 (메타데이터 + 센서)
+│   ├── train/                         ← 훈련 데이터 CSV
+│   ├── val/                           ← 검증 데이터 CSV
+│   └── test/                          ← 테스트 데이터 CSV
 │
-├── 📂 Data Storage
-│   ├── data/                         ← 원본 트레이닝 데이터
-│   │   ├── train.csv                 (자동 생성 가능)
-│   │   ├── val.csv
-│   │   └── test.csv
-│   │
-│   ├── data_new_format/              ← 전처리된 윈도우 데이터
-│   │   ├── train/
-│   │   ├── val/
-│   │   └── test/
-│   │
-│   ├── models/                       ← ✅ 훈련된 모델 저장소
+├── 📂 data/                          ← 빈 폴더 (레거시 - 더 이상 사용 안 함)
+│
+├── 📂 Models & Results
+│   ├── models/                       ← ✅ 훈련된 모델
 │   │   ├── random_forest_model.pkl   (RandomForest)
 │   │   ├── isolation_forest_model.pkl (IsolationForest)
 │   │   ├── one_class_svm_model.pkl   (OneClassSVM)
-│   │   ├── autoencoder_model.pt      (PyTorch Autoencoder)
-│   │   ├── lstm_model.pt             (PyTorch LSTM)
+│   │   ├── autoencoder_model.pt      (PyTorch)
+│   │   ├── lstm_model.pt             (PyTorch)
 │   │   ├── scaler.pkl                (StandardScaler)
-│   │   └── preprocessor.pkl          (Preprocessor pipeline)
+│   │   └── preprocessor.pkl          (Preprocessor)
 │   │
 │   ├── results/                      ← 평가 결과
-│   │   ├── cm_RandomForest.png       (혼동행렬)
-│   │   ├── cm_IsolationForest.png
-│   │   ├── cm_OneClassSVM.png
-│   │   ├── cm_Autoencoder.png
-│   │   ├── cm_LSTM.png
-│   │   ├── roc_RandomForest.png      (ROC 곡선)
 │   │   ├── model_*_evaluation.json   (메트릭)
 │   │   └── evaluation_report.json    (전체 보고서)
 │   │
 │   ├── eda_results/                  ← EDA 시각화
-│   │   ├── 01_feature_distributions.png
-│   │   ├── 02_correlation_matrix.png
-│   │   ├── 03_box_plots.png
-│   │   ├── 04_time_series.png
-│   │   └── 05_label_distribution.png
-│   │
-│   ├── logs/                         ← 로깅 디렉토리
-│   ├── venv/                         ← 가상환경
-│   │
-│   └── synthetic_test_data.csv       ← 🆕 생성된 시뮬레이션 데이터
+│   ├── logs/                         ← 로깅
+│   ├── inference_results.json        ← 추론 결과
+│   └── evaluation_report.json        ← 평가 보고서
 │
-├── 📋 Output Files (Results)
-│   ├── inference_results.json         ← 🔴 실시간 추론 결과 (6,249개 예측)
-│   ├── realtime_inference_results.png ← 🔴 추론 결과 시각화
-│   ├── ml_2d_analysis_visualization.png ← 2D 분석 결과
-│   └── evaluation_report.json         ← 종합 평가 보고서
-│
-└── Configuration
-    ├── requirements.txt               ← 패키지 의존성
-    └── .gitignore                     ← Git 무시 파일
+├── main.py                           ← 전체 파이프라인
+├── requirements.txt                  ← 패키지 의존성
+└── .venv/                            ← 파이썬 가상환경
 ```
+
+### 주요 변경사항
+
+✅ **폴더 정리**:
+- `analysis/`: 데이터 분석 도구 모음
+- `util/`: 유틸리티 및 테스트 스크립트
+- `integration/`: MLflow/BentoML 통합 모듈
+
+✅ **데이터 포맷**:
+- `data_new_format/` 기본 사용 (메타데이터 9줄 + 센서 데이터)
+- `data/` 폴더는 비어있음 (레거시)
+
+✅ **제거된 파일**:
+- `data_loader_old.py` (구식)
+- `data/train.csv, val.csv, test.csv` (구식 포맷)
 
 ---
 
