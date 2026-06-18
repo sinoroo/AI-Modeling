@@ -58,10 +58,20 @@ python main.py --train
 학습 후 MLflow 대시보드에서 실험을 확인할 수 있습니다:
 
 ```bash
-mlflow ui --backend-store-uri file:./mlruns
+mlflow ui
 ```
 
 브라우저에서 `http://localhost:5000` 접속
+
+**주의:** MLflow 최신 버전(2.0+)은 SQLite 데이터베이스 백엔드를 사용합니다.
+```bash
+# SQLite 데이터베이스로 UI 실행
+mlflow ui
+# → 자동으로 ./mlflow.db 인식
+
+# 또는 명시적으로 지정:
+mlflow ui --backend-store-uri sqlite:///mlflow.db
+```
 
 **확인 가능한 정보:**
 - 실행 메트릭 (정확도, 정밀도, 재현율, F1 점수)
@@ -78,10 +88,16 @@ mlflow ui --backend-store-uri file:./mlruns
 ```python
 from anomaly_detection import mlflow_utils
 
-# MLflow Tracker 초기화
+# MLflow Tracker 초기화 (SQLite 데이터베이스)
 tracker = mlflow_utils.MLflowTracker(
     experiment_name="anomaly_detection",
-    tracking_uri="file:./mlruns"
+    tracking_uri="sqlite:///mlflow.db"  # 데이터베이스 백엔드
+)
+
+# 또는 URI 생략 시 기본값 사용:
+tracker = mlflow_utils.MLflowTracker(
+    experiment_name="anomaly_detection"
+    # tracking_uri 생략 시 'sqlite:///mlflow.db' 자동 사용
 )
 
 # F1 스코어로 상위 5개 모델 비교
@@ -96,11 +112,24 @@ print(f"Best F1 Score: {best_run['metrics.f1']}")
 
 ### 모델 레지스트리에 등록
 
+모델 학습 후 자동으로 등록됩니다:
+
 ```python
-# 모델을 MLflow Model Registry에 등록
+# main.py의 training pipeline에서 자동 수행 (Step 10)
+# 각 모델이 MLflow Model Registry에 등록됨
+
+# 예: AnomalyDetection-RandomForest-v1
+#     AnomalyDetection-IsolationForest-v1
+#     AnomalyDetection-Autoencoder-v1
+```
+
+**Manual Registration (필요시):**
+
+```python
+# 구체적인 model URI로 등록
 version = tracker.register_model(
-    model_uri="runs:/YOUR_RUN_ID/sklearn_models",  # MLflow run의 모델 경로
-    model_name="BestAnomalyDetectionModel"
+    model_uri="runs:/YOUR_RUN_ID/sklearn_models",
+    model_name="AnomalyDetection-RandomForest-v2"
 )
 print(f"Registered model version: {version}")
 ```
@@ -256,23 +285,21 @@ curl http://localhost:3000/health_check
 ### 전체 파이프라인 실행
 
 ```bash
-# 1. 학습 실행 (MLflow 추적 포함)
+# 1. 학습 실행 (MLflow 추적 + 자동 모델 등록 포함)
 python main.py --train
 
 # 2. MLflow UI에서 결과 확인
 mlflow ui
+# → http://localhost:5000 자동 접속
 
-# 3. 예제 스크립트 실행
-python mlflow_bentoml_example.py --all
+# 3. BentoML 서비스 시작
+python -m bentoml serve anomaly_detection_service:latest --port 3000
 
-# 4. BentoML 서비스 시작
-bentoml serve anomaly_detection_service:latest
-
-# 5. API 테스트
+# 4. API 테스트
 curl -X POST http://localhost:3000/predict \
   -H "Content-Type: application/json" \
   -d '{
-    "data": [[50, 51, 49, 52, 50]],
+    "data": [[50, 51, 49, 52, 50, 10.5]],
     "model_name": "RandomForest"
   }'
 ```
@@ -284,14 +311,22 @@ from anomaly_detection import mlflow_utils, feature_store, bentoml_service
 import pickle
 import numpy as np
 
-# 1. MLflow로 모델 학습 추적
-tracker = mlflow_utils.MLflowTracker("anomaly_detection")
+# 1. MLflow로 모델 학습 추적 (main.py에서 자동 수행)
+tracker = mlflow_utils.MLflowTracker(
+    "anomaly_detection",
+    tracking_uri="sqlite:///mlflow.db"  # SQLite 데이터베이스 백엔드
+)
 run_id = tracker.start_run("training_run")
 
 # 학습 로직...
 tracker.log_params({"lr": 0.001, "epochs": 50})
 tracker.log_metrics({"accuracy": 0.95, "f1": 0.92})
 tracker.log_sklearn_model(model, "model")
+
+# Step 10: 모델 등록 (MLflow Model Registry)
+model_uri = f"runs:/{run_id}/sklearn_models"
+version = tracker.register_model(model_uri, "AnomalyDetection-RandomForest-v1")
+print(f"Registered version: {version}")
 
 tracker.end_run()
 
@@ -301,7 +336,7 @@ print(f"Best model: {best_run['run_id']}")
 
 # 3. 피처 스토어 설정
 fs = feature_store.FeatureStore()
-schema = fs.create_schema(feature_cols=["f1", "f2", "f3"])
+schema = fs.create_schema(feature_cols=["f1", "f2", "f3", "f4", "f5", "f6"])
 
 # 4. BentoML 서비스 설정
 service = bentoml_service.AnomalyDetectionService()
@@ -309,7 +344,7 @@ service.load_model("RandomForest", "models/rf_model.pkl")
 service.set_ready(True)
 
 # 5. 예측
-test_data = np.random.normal(50, 10, (100, 5))
+test_data = np.random.normal(50, 10, (64, 6))
 result = service.predict_single(test_data)
 print(f"Prediction: {result}")
 ```

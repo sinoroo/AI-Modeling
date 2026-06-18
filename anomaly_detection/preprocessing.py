@@ -12,11 +12,13 @@ Handles:
 import numpy as np
 import pandas as pd
 from scipy import signal
+from scipy.stats import kurtosis, skew
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 from typing import Tuple, List, Optional, Dict
 import pickle
 
 from . import config
+
 
 
 class Preprocessor:
@@ -165,14 +167,14 @@ class Preprocessor:
             features.append(crest)
             
             # Kurtosis (peakedness)
-            kurtosis = np.array([
-                signal.kurtosis(data[:, i]) for i in range(data.shape[1])
+            kurt = np.array([
+                kurtosis(data[:, i]) for i in range(data.shape[1])
             ])
-            features.append(kurtosis)
+            features.append(kurt)
             
             # Skewness
             skewness = np.array([
-                signal.skew(data[:, i]) for i in range(data.shape[1])
+                skew(data[:, i]) for i in range(data.shape[1])
             ])
             features.append(skewness)
             
@@ -255,6 +257,50 @@ class Preprocessor:
 
         return X, y
 
+    def add_statistical_features_to_windows(self, X_windows: np.ndarray) -> np.ndarray:
+        """
+        Add statistical features (RMS, Peak, Crest, Kurtosis, Skewness) to each window.
+        
+        Args:
+            X_windows: 3D array of shape (n_windows, window_size, 1)
+        
+        Returns:
+            3D array of shape (n_windows, window_size, 6)
+            - Feature 0: vibration (original value)
+            - Feature 1: RMS (root mean square)
+            - Feature 2: Peak (max absolute value)
+            - Feature 3: Crest Factor (Peak / RMS)
+            - Feature 4: Kurtosis (peakedness)
+            - Feature 5: Skewness (asymmetry)
+        """
+        n_windows, window_size, n_features = X_windows.shape
+        
+        # Output array with 6 features
+        X_with_features = np.zeros((n_windows, window_size, 6))
+        
+        for w_idx in range(n_windows):
+            window = X_windows[w_idx]  # shape: (window_size, 1)
+            window_data = window[:, 0]  # flatten to 1D array
+            
+            # Calculate statistical features for entire window
+            rms = np.sqrt(np.mean(window_data**2))
+            peak = np.max(np.abs(window_data))
+            crest = peak / (rms + 1e-8)  # avoid division by zero
+            kurt = kurtosis(window_data)
+            skewness_val = skew(window_data)
+            
+            # Assign features to each sample in the window
+            for s_idx in range(window_size):
+                X_with_features[w_idx, s_idx, 0] = window_data[s_idx]       # vibration
+                X_with_features[w_idx, s_idx, 1] = rms                      # RMS
+                X_with_features[w_idx, s_idx, 2] = peak                     # Peak
+                X_with_features[w_idx, s_idx, 3] = crest                    # Crest Factor
+                X_with_features[w_idx, s_idx, 4] = kurt                     # Kurtosis
+                X_with_features[w_idx, s_idx, 5] = skewness_val             # Skewness
+        
+        print(f"[Preprocessor] Added statistical features: {X_windows.shape} → {X_with_features.shape}")
+        return X_with_features
+
     def preprocess_pipeline(self, data: pd.DataFrame, 
                            feature_cols: List[str],
                            label_col: Optional[str] = None,
@@ -269,7 +315,8 @@ class Preprocessor:
             fit_scaler: Whether to fit scaler (True for training data)
 
         Returns:
-            Tuple of (windows, labels)
+            Tuple of (windows with 6 features, labels)
+            Returns shape: (n_windows, window_size, 6) for X and (n_windows,) for y
         """
         print("[Preprocessor] Starting preprocessing pipeline...")
         
@@ -295,11 +342,9 @@ class Preprocessor:
         print("  - Creating time-series windows...")
         X_windows, y_windows = self.create_windows(data, feature_cols, label_col)
 
-        # Step 5: Feature engineering (optional)
-        if config.USE_STATISTICAL_FEATURES:
-            print("  - Adding statistical features...")
-            # For now, we'll keep raw windowed data
-            # Statistical features can be extracted during model training
+        # Step 5: Add statistical features
+        print("  - Adding statistical features (6 features per sample)...")
+        X_windows = self.add_statistical_features_to_windows(X_windows)
 
         print("[Preprocessor] Preprocessing complete!")
         

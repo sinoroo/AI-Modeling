@@ -14,6 +14,9 @@ A production-ready, end-to-end anomaly detection system for industrial pump and 
 
 ## 🚀 Quick Start
 
+# mlflow web UI 실행
+mlflow ui --backend-store-uri sqlite:///integration/mlflow.db
+
 ### 1️⃣ Training Pipeline
 ```bash
 # Activate virtual environment

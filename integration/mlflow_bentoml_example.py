@@ -133,7 +133,7 @@ def register_model_with_mlflow(model_name: str,
     
     tracker = MLflowTracker(
         experiment_name="anomaly_detection",
-        tracking_uri="file:./integration/mlruns"
+        tracking_uri="sqlite:///integration/mlflow.db"
     )
     
     try:

@@ -14,24 +14,24 @@ MODEL_IO_SPECS = {
             "example": "train_normal_000.csv → (499, 3) [time, vibration, label]"
         },
         "stage_2": {
-            "name": "전처리",
+            "name": "전처리 및 특성 생성",
             "input": "DataFrame (4990, 3)",
-            "output": "3D Numpy Array (n_windows, 64, 1)",
-            "operations": ["결측치 처리", "이상치 제거", "정규화", "윈도우 생성"],
-            "example": "(4990, 3) → (154, 64, 1)"
+            "output": "3D Numpy Array (n_windows, 64, 6)",
+            "operations": ["결측치 처리", "이상치 제거", "윈도우 생성", "통계 특성 생성"],
+            "example": "(4990, 3) → (154, 64, 6) [vibration, RMS, Peak, Crest, Kurtosis, Skewness]"
         },
         "stage_3a": {
             "name": "Classical ML (RF/IF/SVM)",
-            "input": "(154, 64, 1) 3D Array",
-            "transformation": "Flatten → (154, 64) 2D Array",
+            "input": "(154, 64, 6) 3D Array",
+            "transformation": "Flatten → (154, 384) 2D Array (64 samples × 6 features)",
             "output_predict": "(27,) - 클래스 레이블",
             "output_proba": "(27, 2) - 확률",
             "models": ["RandomForest", "IsolationForest", "OneClassSVM"]
         },
         "stage_3b": {
             "name": "Deep Learning (Autoencoder/LSTM)",
-            "input": "(154, 64, 1) 3D Array (KEEP 3D)",
-            "output_forward": "Reconstruction (same shape as reshaped input)",
+            "input": "(154, 64, 6) 3D Array (KEEP 3D)",
+            "output_forward": "Reconstruction (same shape as input)",
             "output_error": "(27,) - Reconstruction Error",
             "models": ["Autoencoder", "LSTM"]
         }
@@ -41,7 +41,7 @@ MODEL_IO_SPECS = {
         "RandomForest": {
             "type": "Classical ML - Supervised",
             "requires_labels": True,
-            "input_shape": "(154, 64)",
+            "input_shape": "(154, 384)",
             "input_dtype": "float32/64",
             "input_range": "Normalized [-3, 3]",
             "batch_processing": "Full batch",

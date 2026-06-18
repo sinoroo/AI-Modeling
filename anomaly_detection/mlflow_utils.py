@@ -126,7 +126,8 @@ class MLflowTracker:
         print(f"[MLflow] Logged artifact: {name}")
 
     def log_pytorch_model(self, model, model_name: str, 
-                         artifact_path: str = "pytorch_models"):
+                         artifact_path: str = "pytorch_models",
+                         input_example = None):
         """
         Log PyTorch model.
 
@@ -134,9 +135,24 @@ class MLflowTracker:
             model: PyTorch model
             model_name: Name of the model
             artifact_path: Artifact path
+            input_example: Example input for pt2 format (optional)
         """
-        mlflow.pytorch.log_model(model, artifact_path)
-        print(f"[MLflow] Logged PyTorch model: {model_name}")
+        try:
+            # Use pt2 format if input_example provided, otherwise use default pickle format
+            if input_example is not None:
+                mlflow.pytorch.log_model(
+                    model, 
+                    name=artifact_path,
+                    input_example=input_example,
+                    serialization_format='pt2'
+                )
+                print(f"[MLflow] Logged PyTorch model: {model_name} (pt2 format)")
+            else:
+                # Use default pickle format
+                mlflow.pytorch.log_model(model, name=artifact_path)
+                print(f"[MLflow] Logged PyTorch model: {model_name} (pickle format)")
+        except Exception as e:
+            print(f"[MLflow] Error logging PyTorch model '{model_name}': {e}")
 
     def log_sklearn_model(self, model, model_name: str,
                          artifact_path: str = "sklearn_models"):
@@ -148,7 +164,7 @@ class MLflowTracker:
             model_name: Name of the model
             artifact_path: Artifact path
         """
-        mlflow.sklearn.log_model(model, artifact_path)
+        mlflow.sklearn.log_model(model, name=artifact_path)
         print(f"[MLflow] Logged sklearn model: {model_name}")
 
     def register_model(self, model_uri: str, model_name: str) -> str:
@@ -178,15 +194,27 @@ class MLflowTracker:
             input_example: Example input for schema inference
             signature: Optional model signature
         """
-        if model_type == "pytorch":
-            mlflow.pytorch.log_model(model, "model", 
-                                    input_example=input_example,
-                                    signature=signature)
-        elif model_type == "sklearn":
-            mlflow.sklearn.log_model(model, "model",
-                                    input_example=input_example,
-                                    signature=signature)
-        print(f"[MLflow] Logged model with schema: {model_name}")
+        try:
+            if model_type == "pytorch":
+                # Use pt2 safe format if input_example is provided
+                if input_example is not None:
+                    mlflow.pytorch.log_model(model, "model", 
+                                            input_example=input_example,
+                                            signature=signature,
+                                            serialization_format='pt2')
+                    print(f"[MLflow] Logged model with schema: {model_name} (pt2 format)")
+                else:
+                    # Fallback to pickle format when input_example is not provided
+                    mlflow.pytorch.log_model(model, "model", 
+                                            signature=signature)
+                    print(f"[MLflow] Logged model with schema: {model_name} (pickle format)")
+            elif model_type == "sklearn":
+                mlflow.sklearn.log_model(model, "model",
+                                        input_example=input_example,
+                                        signature=signature)
+                print(f"[MLflow] Logged model with schema: {model_name}")
+        except Exception as e:
+            print(f"[MLflow] Error logging model with schema '{model_name}': {e}")
 
     def log_feature_schema(self, schema: Dict[str, Any], name: str = "feature_schema"):
         """

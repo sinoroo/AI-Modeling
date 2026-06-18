@@ -16,17 +16,18 @@ print("=" * 80)
 
 # 예제 데이터 생성 (실제 전처리 결과와 같은 형태)
 # 실제로는 preprocessing.py에서 이렇게 생성됨
-example_array = np.random.randn(154, 64, 1)  # (n_windows, window_size, n_features)
+example_array = np.random.randn(154, 64, 6)  # (n_windows, window_size, n_features)
 
 print(f"\n배열 형태 (Shape): {example_array.shape}")
 print(f"  → 154: 윈도우 개수")
 print(f"  → 64:  각 윈도우의 샘플 개수 (window_size)")
-print(f"  → 1:   특성 개수 (vibration만)")
+print(f"  → 6:   특성 개수 (vibration, RMS, Peak, Crest, Kurtosis, Skewness)")
 
 print(f"\n배열 크기: {example_array.nbytes / 1024:.2f} KB")
 print(f"배열 데이터 타입: {example_array.dtype}")
 
-print(f"\n총 데이터 포인트: {154 * 64} = {154 * 64} 개의 진동 측정값")
+print(f"\n총 데이터 포인트 (샘플): {154 * 64} = {154 * 64}")
+print(f"총 특성값: {154 * 64 * 6} = {154 * 64 * 6} 개의 특성값")
 
 
 # ============================================================================
@@ -93,10 +94,10 @@ print("4️⃣  3D Array에서 데이터 추출하는 방법들")
 print("=" * 80)
 
 print("\n[추출 1] 특정 윈도우의 모든 샘플")
-window_0 = example_array[0]  # Shape: (64, 1)
+window_0 = example_array[0]  # Shape: (64, 6)
 print(f"Window 0: shape={window_0.shape}")
-print(f"  첫 5개 샘플: {window_0[:5, 0]}")
-print(f"  마지막 5개 샘플: {window_0[-5:, 0]}")
+print(f"  첫 5개 샘플의 진동값 (특성 0): {window_0[:5, 0]}")
+print(f"  마지막 5개 샘플의 RMS (특성 1): {window_0[-5:, 1]}")
 
 print("\n[추출 2] 특정 윈도우를 1D로 변환 (Classical ML용)")
 window_0_flattened = example_array[0].flatten()  # Shape: (64,)
@@ -104,20 +105,26 @@ print(f"Window 0 (flattened): shape={window_0_flattened.shape}")
 print(f"  값: {window_0_flattened[:10]} ...")
 
 print("\n[추출 3] 여러 윈도우를 2D로 변환 (Classical ML 배치용)")
-windows_batch = example_array[:10]  # Shape: (10, 64, 1)
-windows_batch_2d = windows_batch.reshape(10, 64)  # Shape: (10, 64)
+windows_batch = example_array[:10]  # Shape: (10, 64, 6)
+windows_batch_2d = windows_batch.reshape(10, 64*6)  # Shape: (10, 384) - flatten to 2D
 print(f"10개 윈도우 (원형): shape={windows_batch.shape}")
-print(f"10개 윈도우 (2D): shape={windows_batch_2d.shape}")
+print(f"10개 윈도우 (평탄화): shape={windows_batch_2d.shape}")
+print(f"  → 각 윈도우는 64개 샘플 × 6개 특성 = 384개 입력변수")
 
-print("\n[추출 4] 모든 윈도우를 2D로 변환")
-all_windows_2d = example_array.reshape(154, 64)  # Shape: (154, 64)
+print("\n[추출 4] 모든 윈도우를 2D로 변환 (Classical ML용)")
+all_windows_2d = example_array.reshape(154, 64*6)  # Shape: (154, 384)
 print(f"전체 배열 (2D): shape={all_windows_2d.shape}")
 print(f"  메모리: {all_windows_2d.nbytes / 1024:.2f} KB")
+print(f"  → 154개 샘플 × 384개 입력변수 (64 × 6)")
 
 print("\n[추출 5] 특정 샘플 시점의 모든 윈도우 값")
-all_at_sample_0 = example_array[:, 0, 0]  # Shape: (154,)
-print(f"모든 윈도우의 첫 샘플: shape={all_at_sample_0.shape}")
-print(f"  값: {all_at_sample_0[:5]} ... (5개만 표시)")
+all_at_sample_0_vibration = example_array[:, 0, 0]  # Shape: (154,) - 진동값만
+all_at_sample_0_all_features = example_array[:, 0, :]  # Shape: (154, 6) - 모든 특성
+print(f"모든 윈도우의 첫 샘플 (진동값만): shape={all_at_sample_0_vibration.shape}")
+print(f"  값: {all_at_sample_0_vibration[:5]} ... (5개만 표시)")
+print(f"\n모든 윈도우의 첫 샘플 (모든 6개 특성): shape={all_at_sample_0_all_features.shape}")
+print(f"  처음 3개 윈도우:")
+print(f"  {all_at_sample_0_all_features[:3, :]}")
 
 print("\n[추출 6] 특정 윈도우의 특정 샘플")
 value = example_array[50, 32, 0]

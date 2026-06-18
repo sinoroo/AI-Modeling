@@ -74,12 +74,13 @@ def run_training_pipeline(
 
     # Initialize MLflow
     mlflow_tracker = None
+    mlflow_run_id = None
     if use_mlflow:
         mlflow_tracker = MLflowTracker(
             experiment_name="anomaly_detection",
-            tracking_uri="sqlite:///integration/mlflow.db"
+            tracking_uri="sqlite:///integration/mlflow.db"  # Store in integration folder
         )
-        run_id = mlflow_tracker.start_run(
+        mlflow_run_id = mlflow_tracker.start_run(
             run_name="training_run",
             tags={
                 "model_type": "ensemble",
@@ -87,7 +88,7 @@ def run_training_pipeline(
                 "dataset": "pump_motor_system"
             }
         )
-        print(f"[MLflow] Experiment tracking started with run ID: {run_id}")
+        print(f"[MLflow] Experiment tracking started with run ID: {mlflow_run_id}")
 
     # Initialize Feature Store
     fs = FeatureStore(store_dir="integration/feature_store")
@@ -152,9 +153,23 @@ def run_training_pipeline(
     y_test = preprocessed["y_test"]
     preprocessor = preprocessed["preprocessor"]
 
-    print(f"  Training: {X_train.shape}")
-    print(f"  Validation: {X_val.shape}")
-    print(f"  Test: {X_test.shape}")
+    print(f"\n  ✓ Data shapes with 6 statistical features:")
+    print(f"    Training:   {X_train.shape}   (n_windows, window_size, n_features)")
+    print(f"    Validation: {X_val.shape}")
+    print(f"    Test:       {X_test.shape}")
+    print(f"  ✓ Label shapes:")
+    print(f"    Training:   {y_train.shape}")
+    print(f"    Validation: {y_val.shape}")
+    print(f"    Test:       {y_test.shape}")
+    
+    # Log preprocessing information
+    print(f"\n  Feature composition:")
+    print(f"    [0]: vibration (original normalized signal)")
+    print(f"    [1]: RMS (root mean square energy)")
+    print(f"    [2]: Peak (maximum absolute value)")
+    print(f"    [3]: Crest Factor (Peak / RMS)")
+    print(f"    [4]: Kurtosis (peakedness)")
+    print(f"    [5]: Skewness (asymmetry)")
 
     # Log preprocessing parameters
     if mlflow_tracker:
@@ -162,10 +177,16 @@ def run_training_pipeline(
             "window_size": config.WINDOW_SIZE,
             "normalize_method": config.NORMALIZE_METHOD,
             "missing_value_method": config.MISSING_VALUE_METHOD,
-            "train_samples": X_train.shape[0],
-            "val_samples": X_val.shape[0],
-            "test_samples": X_test.shape[0],
-            "feature_count": len(feature_cols)
+            "train_windows": X_train.shape[0],
+            "val_windows": X_val.shape[0],
+            "test_windows": X_test.shape[0],
+            "features": X_train.shape[2],
+            "feature_0": "vibration",
+            "feature_1": "RMS",
+            "feature_2": "Peak",
+            "feature_3": "Crest_Factor",
+            "feature_4": "Kurtosis",
+            "feature_5": "Skewness",
         })
 
     # Step 4: Train models
@@ -231,6 +252,43 @@ def run_training_pipeline(
     if mlflow_tracker:
         mlflow_tracker.log_params({"best_model": best_model_name})
 
+    # Step 10: Register models to MLflow Model Registry
+    if mlflow_tracker and mlflow_run_id:
+        print(f"\n[Step 10] Registering models to MLflow Model Registry...")
+        
+        # Define model name mappings with artifact paths
+        model_registry = {
+            "RandomForest": "sklearn_models",
+            "IsolationForest": "sklearn_models",
+            "OneClassSVM": "sklearn_models",
+            "Autoencoder": "pytorch_models",
+            "LSTM": "pytorch_models",
+        }
+        
+        registered_models = {}
+        for model_name, artifact_path in model_registry.items():
+            if model_name in models:
+                # Construct MLflow model URI: runs:/RUN_ID/artifact_path
+                model_uri = f"runs:/{mlflow_run_id}/{artifact_path}"
+                
+                # Register model with version naming
+                registry_name = f"AnomalyDetection-{model_name}-v1"
+                version = mlflow_tracker.register_model(model_uri, registry_name)
+                
+                if version:
+                    registered_models[model_name] = {
+                        "registry_name": registry_name,
+                        "version": version,
+                        "uri": model_uri
+                    }
+                    print(f"  ✓ {model_name}: {registry_name} (version {version})")
+                else:
+                    print(f"  ✗ {model_name}: Registration failed")
+        
+        # Log registration info
+        mlflow_tracker.log_dict(registered_models, "registered_models")
+        print(f"\n  📦 {len(registered_models)} models registered to MLflow Model Registry")
+
     # End MLflow run
     if mlflow_tracker:
         mlflow_tracker.end_run()
@@ -266,16 +324,24 @@ def run_inference_demo():
     np.random.seed(42)
 
     for i in range(10):
-        # Normal window
-        window = np.random.normal(loc=50, scale=10, size=(config.WINDOW_SIZE, 5))
-        result = inference_sys.predict_window(window)
+        # Normal window - initially 1 feature (vibration only)
+        window_raw = np.random.normal(loc=50, scale=10, size=(config.WINDOW_SIZE, 1))
+        # Add statistical features to get 6 features
+        window_with_features = preprocessor.add_statistical_features_to_windows(
+            window_raw.reshape(1, config.WINDOW_SIZE, 1)
+        )[0]  # Extract first (and only) window
+        result = inference_sys.predict_window(window_with_features)
         print(f"  Window {i+1}: {'⚠️ ANOMALY' if result['is_anomaly'] else '✓ NORMAL'} "
               f"(score: {result['anomaly_score']:.3f})")
 
     # Anomaly window
     print("\n  Simulating anomaly...")
-    anomaly_window = np.random.normal(loc=150, scale=30, size=(config.WINDOW_SIZE, 5))
-    result = inference_sys.predict_window(anomaly_window)
+    anomaly_window_raw = np.random.normal(loc=150, scale=30, size=(config.WINDOW_SIZE, 1))
+    # Add statistical features to get 6 features
+    anomaly_window_with_features = preprocessor.add_statistical_features_to_windows(
+        anomaly_window_raw.reshape(1, config.WINDOW_SIZE, 1)
+    )[0]  # Extract first (and only) window
+    result = inference_sys.predict_window(anomaly_window_with_features)
     print(f"  Anomaly window: {'⚠️ ANOMALY' if result['is_anomaly'] else '✓ NORMAL'} "
           f"(score: {result['anomaly_score']:.3f})")
 

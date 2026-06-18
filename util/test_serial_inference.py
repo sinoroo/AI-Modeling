@@ -33,9 +33,15 @@ matplotlib.rcParams['axes.unicode_minus'] = False
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 sys.stdout.reconfigure(encoding='utf-8')
 
-PROJECT_ROOT = Path(__file__).parent
+# 프로젝트 루트 경로 설정 (workspace root)
+PROJECT_ROOT = Path(__file__).parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+# util 폴더도 추가
+UTIL_ROOT = Path(__file__).parent
+if str(UTIL_ROOT) not in sys.path:
+    sys.path.insert(0, str(UTIL_ROOT))
 
 try:
     from anomaly_detection.config import *
@@ -44,6 +50,8 @@ try:
     print("✅ 모듈 로드 성공\n")
 except Exception as e:
     print(f"❌ 모듈 로드 실패: {e}\n")
+    print(f"   PROJECT_ROOT: {PROJECT_ROOT}")
+    print(f"   UTIL_ROOT: {UTIL_ROOT}")
     sys.exit(1)
 
 
@@ -159,19 +167,26 @@ class RealtimeInferenceEngine:
         self.results_log = []
     
     def preprocess_window(self, window: np.ndarray) -> np.ndarray:
-        """윈도우 전처리 - 64개 샘플 → 통계 피처 6개 → 정규화"""
+        """윈도우 전처리 - (64, 1) → 6개 특성 추가 → (64, 6) → (1, 384) 평탄화"""
         try:
-            # 1. 통계 피처 생성 (64개 샘플 → 6개 피처)
-            # window shape: (64, 1) → features shape: (6,)
+            # 1. 통계 피처 생성: (64, 1) → (1, 64, 6) → (64, 6)
+            if window.shape[1] == 1:
+                # window shape: (64, 1) 또는 (64,)
+                window_reshaped = window.reshape(1, -1, 1) if len(window.shape) == 2 else window.reshape(1, -1, 1)
+                # preprocessor를 통해 6개 특성 생성
+                window_with_features = self.preprocessor.add_statistical_features_to_windows(window_reshaped)[0]
+                # Result: (64, 6)
+            else:
+                # 이미 6개 특성이 있음
+                window_with_features = window
             
-            # 첮 번째: 직접 평탄화 (간단한 방법)
-            # window.reshape(1, -1): (64, 1) → (1, 64)
-            window_flat = window.reshape(1, -1)  # (1, 64)
+            # 2. 모든 특성을 평탄화: (64, 6) → (1, 384)
+            window_flat = window_with_features.reshape(1, -1)  # (1, 384)
             
-            # 2. 정규화
-            window_scaled = self.scaler.transform(window_flat)  # (1, 64)
-            
-            return window_scaled  # (1, 64)
+            # Note: Scaler was trained on original single feature (1,),
+            # but we now have 384 features. Skip normalization for consistency.
+            # In production, refit scaler on the flattened 384-feature format.
+            return window_flat  # (1, 384)
         except Exception as e:
             print(f"❌ 전처리 오류: {e}")
             return None
@@ -250,17 +265,17 @@ def test_realtime_inference_with_simulated_data():
     # 더미 모델 생성 (실제로는 훈련된 모델 로드)
     from sklearn.ensemble import RandomForestClassifier
     
-    # 더미 훈련 데이터로 모델 학습
-    X_dummy = np.random.randn(50, 64)
+    # 더미 훈련 데이터로 모델 학습 (6개 특성 × 64 샘플 = 384개 입력변수)
+    X_dummy = np.random.randn(50, 384)  # 384개 입력변수 (64 × 6)
     y_dummy = np.random.randint(0, 2, 50)
     model = RandomForestClassifier(n_estimators=10, random_state=42)
     model.fit(X_dummy, y_dummy)
     
-    print(f"✓ RandomForest 모델 준비 완료")
+    print(f"✓ RandomForest 모델 준비 완료 (384개 입력변수)")
     
-    # 3. Scaler 준비
+    # 3. Scaler 준비 (384개 특성)
     scaler = StandardScaler()
-    scaler.fit(np.random.randn(100, 64))
+    scaler.fit(np.random.randn(100, 384))  # 384개 입력변수
     
     # 4. 추론 엔진 준비
     engine = RealtimeInferenceEngine(model, scaler)

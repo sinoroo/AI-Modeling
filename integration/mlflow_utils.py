@@ -38,8 +38,25 @@ class MLflowTracker:
             # Use SQLite instead of file store (MLflow 2.0+)
             mlflow.set_tracking_uri("sqlite:///mlflow.db")
         
-        # Set experiment
-        mlflow.set_experiment(experiment_name)
+        # Create or get experiment
+        try:
+            # Try to get existing experiment
+            experiment = mlflow.get_experiment_by_name(experiment_name)
+            
+            if experiment is None:
+                # Create new experiment if it doesn't exist
+                experiment_id = mlflow.create_experiment(experiment_name)
+                print(f"[MLflow] Created new experiment: {experiment_name} (ID: {experiment_id})")
+            else:
+                print(f"[MLflow] Using existing experiment: {experiment_name} (ID: {experiment.experiment_id})")
+            
+            # Set active experiment
+            mlflow.set_experiment(experiment_name)
+        except Exception as e:
+            print(f"[MLflow] Error initializing experiment '{experiment_name}': {e}")
+            # Still set experiment even if there's an error
+            mlflow.set_experiment(experiment_name)
+        
         self.active_run = None
 
     def start_run(self, run_name: str, tags: Optional[Dict[str, str]] = None) -> str:
@@ -53,20 +70,38 @@ class MLflowTracker:
         Returns:
             Run ID
         """
-        self.active_run = mlflow.start_run(run_name=run_name)
-        
-        if tags:
-            mlflow.set_tags(tags)
-        
-        print(f"[MLflow] Started run: {run_name} (ID: {self.active_run.info.run_id})")
-        return self.active_run.info.run_id
+        try:
+            # End any existing run first
+            if self.active_run:
+                mlflow.end_run()
+                print(f"[MLflow] Ended previous run: {self.active_run.info.run_id}")
+            
+            # Start new run with explicit experiment
+            self.active_run = mlflow.start_run(run_name=run_name)
+            
+            if tags:
+                mlflow.set_tags(tags)
+            
+            print(f"[MLflow] Started run: {run_name}")
+            print(f"         Experiment: {self.experiment_name}")
+            print(f"         Run ID: {self.active_run.info.run_id}")
+            return self.active_run.info.run_id
+        except Exception as e:
+            print(f"[MLflow] Error starting run '{run_name}': {e}")
+            return None
 
     def end_run(self):
         """End current MLflow run."""
         if self.active_run:
-            mlflow.end_run()
-            print(f"[MLflow] Ended run: {self.active_run.info.run_id}")
-            self.active_run = None
+            try:
+                run_id = self.active_run.info.run_id
+                mlflow.end_run()
+                print(f"[MLflow] Ended run: {run_id}")
+                self.active_run = None
+            except Exception as e:
+                print(f"[MLflow] Error ending run: {e}")
+        else:
+            print(f"[MLflow] No active run to end")
 
     def log_params(self, params: Dict[str, Any]):
         """
@@ -75,8 +110,15 @@ class MLflowTracker:
         Args:
             params: Dictionary of parameters
         """
-        mlflow.log_params(params)
-        print(f"[MLflow] Logged {len(params)} parameters")
+        if not params:
+            print(f"[MLflow] No parameters to log")
+            return
+        
+        try:
+            mlflow.log_params(params)
+            print(f"[MLflow] Logged {len(params)} parameters")
+        except Exception as e:
+            print(f"[MLflow] Error logging parameters: {e}")
 
     def log_metrics(self, metrics: Dict[str, float], step: int = None):
         """
@@ -86,10 +128,27 @@ class MLflowTracker:
             metrics: Dictionary of metrics
             step: Optional step number
         """
+        logged_count = 0
+        skipped_count = 0
+        
         for key, value in metrics.items():
             if value is not None:
-                mlflow.log_metric(key, value, step=step)
-        print(f"[MLflow] Logged {len(metrics)} metrics")
+                try:
+                    mlflow.log_metric(key, value, step=step)
+                    logged_count += 1
+                except Exception as e:
+                    print(f"  [Warning] Failed to log metric '{key}': {e}")
+                    skipped_count += 1
+            else:
+                skipped_count += 1
+        
+        if logged_count > 0 or skipped_count > 0:
+            msg = f"[MLflow] Logged {logged_count} metrics"
+            if skipped_count > 0:
+                msg += f" ({skipped_count} skipped due to None/error)"
+            print(msg)
+        else:
+            print(f"[MLflow] No metrics to log (received {len(metrics)} items, all None or empty)")
 
     def log_dict(self, data: Dict, name: str):
         """
@@ -126,17 +185,37 @@ class MLflowTracker:
         print(f"[MLflow] Logged artifact: {name}")
 
     def log_pytorch_model(self, model, model_name: str, 
-                         artifact_path: str = "pytorch_models"):
+                         artifact_path: str = "pytorch_models",
+                         input_example = None):
         """
         Log PyTorch model.
 
         Args:
             model: PyTorch model
             model_name: Name of the model
-            artifact_path: Artifact path
+            artifact_path: Artifact path (model name in MLflow)
+            input_example: Example input for pt2 format (torch.Tensor or numpy array)
+                          If provided, uses safe pt2 serialization format
         """
-        mlflow.pytorch.log_model(model, artifact_path)
-        print(f"[MLflow] Logged PyTorch model: {model_name}")
+        try:
+            # Use pt2 format if input_example provided, otherwise use default pickle format
+            if input_example is not None:
+                mlflow.pytorch.log_model(
+                    model, 
+                    name=artifact_path,
+                    input_example=input_example,
+                    serialization_format='pt2'
+                )
+                print(f"[MLflow] Logged PyTorch model: {model_name} (pt2 format)")
+            else:
+                # Use default pickle format (may show warning but works)
+                mlflow.pytorch.log_model(
+                    model, 
+                    name=artifact_path
+                )
+                print(f"[MLflow] Logged PyTorch model: {model_name} (pickle format)")
+        except Exception as e:
+            print(f"[MLflow] Error logging PyTorch model '{model_name}': {e}")
 
     def log_sklearn_model(self, model, model_name: str,
                          artifact_path: str = "sklearn_models"):
@@ -146,10 +225,14 @@ class MLflowTracker:
         Args:
             model: sklearn model
             model_name: Name of the model
-            artifact_path: Artifact path
+            artifact_path: Artifact path (model name in MLflow)
         """
-        mlflow.sklearn.log_model(model, artifact_path)
-        print(f"[MLflow] Logged sklearn model: {model_name}")
+        try:
+            # Use name parameter instead of deprecated artifact_path
+            mlflow.sklearn.log_model(model, name=artifact_path)
+            print(f"[MLflow] Logged sklearn model: {model_name}")
+        except Exception as e:
+            print(f"[MLflow] Error logging sklearn model '{model_name}': {e}")
 
     def register_model(self, model_uri: str, model_name: str) -> str:
         """
@@ -162,9 +245,13 @@ class MLflowTracker:
         Returns:
             Version of registered model
         """
-        result = mlflow.register_model(model_uri, model_name)
-        print(f"[MLflow] Registered model: {model_name} (version: {result.version})")
-        return result.version
+        try:
+            result = mlflow.register_model(model_uri, model_name)
+            print(f"[MLflow] Registered model: {model_name} (version: {result.version})")
+            return result.version
+        except Exception as e:
+            print(f"[MLflow] Error registering model '{model_name}': {e}")
+            return None
 
     def log_model_with_schema(self, model, model_type: str, model_name: str,
                              input_example = None, signature = None):
@@ -175,18 +262,38 @@ class MLflowTracker:
             model: Model object
             model_type: Type of model ('pytorch', 'sklearn')
             model_name: Name of the model
-            input_example: Example input for schema inference
+            input_example: Example input for schema inference (required for pt2)
             signature: Optional model signature
         """
-        if model_type == "pytorch":
-            mlflow.pytorch.log_model(model, "model", 
-                                    input_example=input_example,
-                                    signature=signature)
-        elif model_type == "sklearn":
-            mlflow.sklearn.log_model(model, "model",
-                                    input_example=input_example,
-                                    signature=signature)
-        print(f"[MLflow] Logged model with schema: {model_name}")
+        try:
+            if model_type == "pytorch":
+                # Use pt2 format if input_example provided
+                if input_example is not None:
+                    mlflow.pytorch.log_model(
+                        model, 
+                        name="model", 
+                        input_example=input_example,
+                        signature=signature,
+                        serialization_format='pt2'
+                    )
+                    print(f"[MLflow] Logged model with schema: {model_name} (pt2 format)")
+                else:
+                    mlflow.pytorch.log_model(
+                        model, 
+                        name="model",
+                        signature=signature
+                    )
+                    print(f"[MLflow] Logged model with schema: {model_name} (pickle format)")
+            elif model_type == "sklearn":
+                mlflow.sklearn.log_model(
+                    model, 
+                    name="model",
+                    input_example=input_example,
+                    signature=signature
+                )
+                print(f"[MLflow] Logged model with schema: {model_name}")
+        except Exception as e:
+            print(f"[MLflow] Error logging model with schema '{model_name}': {e}")
 
     def log_feature_schema(self, schema: Dict[str, Any], name: str = "feature_schema"):
         """

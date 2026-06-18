@@ -19,9 +19,17 @@ if str(PROJECT_ROOT) not in sys.path:
 
 try:
     from anomaly_detection import config
-except:
-    print("❌ 설정 로드 실패. 프로젝트 루트에서 실행해주세요.")
-    sys.exit(1)
+except ImportError:
+    # 프로젝트 루트 경로 추가
+    PROJECT_ROOT = Path(__file__).parent.parent.parent
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    
+    try:
+        from anomaly_detection import config
+    except ImportError:
+        print("⚠️  설정 모듈을 찾을 수 없습니다. 계속 진행합니다.")
+        config = None
 
 
 class SerialDataSimulator:
