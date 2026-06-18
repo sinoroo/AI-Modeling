@@ -1,0 +1,70 @@
+{
+  "sample_sizes": [
+    32,
+    64,
+    128,
+    256
+  ],
+  "models": [
+    "RandomForest",
+    "Autoencoder"
+  ],
+  "results_by_sample_size": {
+    "32": {
+      "RandomForest": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "Autoencoder": {
+        "accuracy": 0.75,
+        "precision": 0.8173076923076923,
+        "recall": 0.75,
+        "f1": 0.6898989898989899
+      }
+    },
+    "64": {
+      "RandomForest": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "Autoencoder": {
+        "accuracy": 0.7407407407407407,
+        "precision": 0.8133333333333334,
+        "recall": 0.7407407407407407,
+        "f1": 0.6793516560958421
+      }
+    },
+    "128": {
+      "RandomForest": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "Autoencoder": {
+        "accuracy": 0.76,
+        "precision": 0.8226086956521739,
+        "recall": 0.76,
+        "f1": 0.706
+      }
+    },
+    "256": {
+      "RandomForest": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "Autoencoder": {
+        "accuracy": 0.7619047619047619,
+        "precision": 0.8214285714285714,
+        "recall": 0.7619047619047619,
+        "f1": 0.693877551020408
+      }
+    }
+  }
+}

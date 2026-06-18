@@ -1,0 +1,4 @@
+Model,Val_F1,Val_Precision,Val_Recall,Val_ROC_AUC,Test_F1,Test_Precision,Test_Recall,Test_ROC_AUC
+IsolationForest,0.276657060518732,1.0,0.1605351170568562,,0.25146198830409355,1.0,0.14381270903010032,
+KMeansAnomaly,0.0,0.0,0.0,0.5,0.0,0.0,0.0,0.5
+PCAAnomaly,0.0,0.0,0.0,0.5,0.0,0.0,0.0,0.5

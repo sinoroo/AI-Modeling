@@ -2,7 +2,9 @@
 Model training module for anomaly detection.
 
 Implements:
-- Classical ML models: RandomForest, IsolationForest, OneClassSVM
+- Classical ML models: RandomForest, GradientBoosting, AdaBoost, ExtraTrees, 
+                       DecisionTree, KNN, Naive Bayes, LogisticRegression, SVM,
+                       IsolationForest, OneClassSVM, LocalOutlierFactor, EllipticEnvelope
 - Deep Learning models: Autoencoder, LSTM
 """
 
@@ -10,8 +12,15 @@ import numpy as np
 import pandas as pd
 import pickle
 from typing import Dict, Any, Tuple
-from sklearn.ensemble import RandomForestClassifier, IsolationForest
-from sklearn.svm import OneClassSVM
+from sklearn.ensemble import RandomForestClassifier, IsolationForest, GradientBoostingClassifier, AdaBoostClassifier, ExtraTreesClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier, LocalOutlierFactor
+from sklearn.naive_bayes import GaussianNB
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import OneClassSVM, SVC
+from sklearn.covariance import EllipticEnvelope, MinCovDet
+from sklearn.decomposition import PCA
+from sklearn.cluster import DBSCAN, KMeans
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 import torch
@@ -91,6 +100,314 @@ class ClassicalModelTrainer:
         print("[ClassicalML] One-Class SVM training complete")
 
         return model
+
+    @staticmethod
+    def train_gradient_boosting(X_train: np.ndarray,
+                               y_train: np.ndarray,
+                               params: Dict = None) -> GradientBoostingClassifier:
+        """Train Gradient Boosting classifier."""
+        if params is None:
+            params = config.CLASSICAL_MODELS["GradientBoosting"]
+
+        print("[ClassicalML] Training Gradient Boosting...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        model = GradientBoostingClassifier(**params)
+        model.fit(X_train_flat, y_train)
+        print("[ClassicalML] Gradient Boosting training complete")
+
+        return model
+
+    @staticmethod
+    def train_decision_tree(X_train: np.ndarray,
+                           y_train: np.ndarray,
+                           params: Dict = None) -> DecisionTreeClassifier:
+        """Train Decision Tree classifier."""
+        if params is None:
+            params = config.CLASSICAL_MODELS["DecisionTree"]
+
+        print("[ClassicalML] Training Decision Tree...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        model = DecisionTreeClassifier(**params)
+        model.fit(X_train_flat, y_train)
+        print("[ClassicalML] Decision Tree training complete")
+
+        return model
+
+    @staticmethod
+    def train_knn(X_train: np.ndarray,
+                  y_train: np.ndarray,
+                  params: Dict = None) -> KNeighborsClassifier:
+        """Train K-Nearest Neighbors classifier."""
+        if params is None:
+            params = config.CLASSICAL_MODELS["KNearestNeighbors"]
+
+        print("[ClassicalML] Training K-Nearest Neighbors...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        model = KNeighborsClassifier(**params)
+        model.fit(X_train_flat, y_train)
+        print("[ClassicalML] K-Nearest Neighbors training complete")
+
+        return model
+
+    @staticmethod
+    def train_gaussian_nb(X_train: np.ndarray,
+                         y_train: np.ndarray,
+                         params: Dict = None) -> GaussianNB:
+        """Train Gaussian Naive Bayes classifier."""
+        if params is None:
+            params = config.CLASSICAL_MODELS["GaussianNB"]
+
+        print("[ClassicalML] Training Gaussian Naive Bayes...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        model = GaussianNB(**params)
+        model.fit(X_train_flat, y_train)
+        print("[ClassicalML] Gaussian Naive Bayes training complete")
+
+        return model
+
+    @staticmethod
+    def train_logistic_regression(X_train: np.ndarray,
+                                 y_train: np.ndarray,
+                                 params: Dict = None) -> LogisticRegression:
+        """Train Logistic Regression classifier."""
+        if params is None:
+            params = config.CLASSICAL_MODELS["LogisticRegression"]
+
+        print("[ClassicalML] Training Logistic Regression...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        model = LogisticRegression(**params)
+        model.fit(X_train_flat, y_train)
+        print("[ClassicalML] Logistic Regression training complete")
+
+        return model
+
+    @staticmethod
+    def train_svm(X_train: np.ndarray,
+                  y_train: np.ndarray,
+                  params: Dict = None) -> SVC:
+        """Train Support Vector Machine classifier."""
+        if params is None:
+            params = config.CLASSICAL_MODELS["SVM"]
+
+        print("[ClassicalML] Training SVM...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        model = SVC(**params)
+        model.fit(X_train_flat, y_train)
+        print("[ClassicalML] SVM training complete")
+
+        return model
+
+    @staticmethod
+    def train_adaboost(X_train: np.ndarray,
+                      y_train: np.ndarray,
+                      params: Dict = None) -> AdaBoostClassifier:
+        """Train AdaBoost classifier."""
+        if params is None:
+            params = config.CLASSICAL_MODELS["AdaBoost"]
+
+        print("[ClassicalML] Training AdaBoost...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        model = AdaBoostClassifier(**params)
+        model.fit(X_train_flat, y_train)
+        print("[ClassicalML] AdaBoost training complete")
+
+        return model
+
+    @staticmethod
+    def train_extra_trees(X_train: np.ndarray,
+                         y_train: np.ndarray,
+                         params: Dict = None) -> ExtraTreesClassifier:
+        """Train Extra Trees classifier."""
+        if params is None:
+            params = config.CLASSICAL_MODELS["ExtraTrees"]
+
+        print("[ClassicalML] Training Extra Trees...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        model = ExtraTreesClassifier(**params)
+        model.fit(X_train_flat, y_train)
+        print("[ClassicalML] Extra Trees training complete")
+
+        return model
+
+    @staticmethod
+    def train_local_outlier_factor(X_train: np.ndarray,
+                                  params: Dict = None) -> LocalOutlierFactor:
+        """Train Local Outlier Factor (unsupervised anomaly detection)."""
+        if params is None:
+            params = config.CLASSICAL_MODELS["LocalOutlierFactor"]
+
+        print("[ClassicalML] Training Local Outlier Factor...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        model = LocalOutlierFactor(**params)
+        model.fit(X_train_flat)
+        print("[ClassicalML] Local Outlier Factor training complete")
+
+        return model
+
+    @staticmethod
+    def train_elliptic_envelope(X_train: np.ndarray,
+                               params: Dict = None) -> EllipticEnvelope:
+        """Train Elliptic Envelope (unsupervised anomaly detection)."""
+        if params is None:
+            params = config.CLASSICAL_MODELS["EllipticEnvelope"]
+
+        print("[ClassicalML] Training Elliptic Envelope...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        model = EllipticEnvelope(**params)
+        model.fit(X_train_flat)
+        print("[ClassicalML] Elliptic Envelope training complete")
+
+        return model
+
+    @staticmethod
+    def train_robust_covariance(X_train: np.ndarray,
+                               params: Dict = None):
+        """Train Robust Covariance (unsupervised anomaly detection)."""
+        if params is None:
+            params = config.CLASSICAL_MODELS.get("RobustCovariance", {})
+
+        print("[ClassicalML] Training Robust Covariance...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        # RobustCovariance is similar to EllipticEnvelope but more robust
+        # We'll use EllipticEnvelope which internally uses MinCovDet
+        contam = params.get("contamination", 0.1)
+        model = EllipticEnvelope(contamination=contam, random_state=config.RANDOM_SEED)
+        model.fit(X_train_flat)
+        print("[ClassicalML] Robust Covariance training complete")
+
+        return model
+
+    @staticmethod
+    def train_min_cov_det(X_train: np.ndarray,
+                         params: Dict = None):
+        """Train Minimum Covariance Determinant (unsupervised anomaly detection)."""
+        if params is None:
+            params = config.CLASSICAL_MODELS.get("MinCovDet", {})
+
+        print("[ClassicalML] Training Minimum Covariance Determinant...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        contam = params.get("contamination", 0.1)
+        model = MinCovDet(contamination=contam, random_state=config.RANDOM_SEED)
+        model.fit(X_train_flat)
+        print("[ClassicalML] Minimum Covariance Determinant training complete")
+
+        return model
+
+    @staticmethod
+    def train_kmeans_anomaly(X_train: np.ndarray,
+                            params: Dict = None):
+        """Train KMeans-based Anomaly Detection."""
+        if params is None:
+            params = config.CLASSICAL_MODELS.get("KMeansAnomaly", {})
+
+        print("[ClassicalML] Training KMeans Anomaly Detection...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        n_clusters = params.get("n_clusters", 5)
+        n_init = params.get("n_init", 10)
+        
+        # Train KMeans
+        kmeans = KMeans(
+            n_clusters=n_clusters,
+            n_init=n_init,
+            random_state=config.RANDOM_SEED
+        )
+        kmeans.fit(X_train_flat)
+        
+        # Calculate distances to nearest cluster center
+        distances = np.min(kmeans.transform(X_train_flat), axis=1)
+        
+        # Store threshold based on contamination
+        contamination = params.get("contamination", 0.1)
+        threshold = np.percentile(distances, 100 * (1 - contamination))
+        
+        # Store threshold in model for later reference
+        kmeans.anomaly_threshold = threshold
+        kmeans.distances_train = distances
+        
+        print("[ClassicalML] KMeans Anomaly Detection training complete")
+
+        return kmeans
+
+    @staticmethod
+    def train_pca_anomaly(X_train: np.ndarray,
+                         params: Dict = None):
+        """Train PCA-based Anomaly Detection."""
+        if params is None:
+            params = config.CLASSICAL_MODELS.get("PCAAnomaly", {})
+
+        print("[ClassicalML] Training PCA Anomaly Detection...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        n_components = params.get("n_components", 0.95)
+        
+        # Train PCA
+        pca = PCA(n_components=n_components, random_state=config.RANDOM_SEED)
+        pca.fit(X_train_flat)
+        
+        # Calculate reconstruction errors
+        X_transformed = pca.transform(X_train_flat)
+        X_reconstructed = pca.inverse_transform(X_transformed)
+        reconstruction_errors = np.mean((X_train_flat - X_reconstructed) ** 2, axis=1)
+        
+        # Store threshold based on contamination
+        contamination = params.get("contamination", 0.1)
+        threshold = np.percentile(reconstruction_errors, 100 * (1 - contamination))
+        
+        # Store threshold in model for later reference
+        pca.anomaly_threshold = threshold
+        pca.reconstruction_errors_train = reconstruction_errors
+        
+        print("[ClassicalML] PCA Anomaly Detection training complete")
+
+        return pca
+
+    @staticmethod
+    def train_dbscan(X_train: np.ndarray,
+                    params: Dict = None):
+        """Train DBSCAN-based Anomaly Detection."""
+        if params is None:
+            params = config.CLASSICAL_MODELS.get("DBSCAN", {})
+
+        print("[ClassicalML] Training DBSCAN Anomaly Detection...")
+        
+        X_train_flat = X_train.reshape(X_train.shape[0], -1) if X_train.ndim == 3 else X_train
+        
+        eps = params.get("eps", 0.5)
+        min_samples = params.get("min_samples", 5)
+        
+        dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+        dbscan.fit(X_train_flat)
+        
+        print("[ClassicalML] DBSCAN Anomaly Detection training complete")
+
+        return dbscan
 
     @staticmethod
     def save_model(model: Any, filepath: str):

@@ -24,6 +24,9 @@ def print_header(title):
     print(f"{'═' * 80}\n")
 
 def main():
+    # 워크스페이스 루트를 명시적으로 지정 (QUICK_START.py는 util/ 폴더에 있음)
+    workspace_root = Path(__file__).parent.parent
+    
     print(f"""
 ╔════════════════════════════════════════════════════════════════════════════╗
 ║         ANOMALY DETECTION PIPELINE - QUICK START GUIDE v2.0               ║
@@ -71,8 +74,8 @@ Processing:
 """)
         input("Press Enter to start...")
         print("\n⏳ Running real-time inference test...\n")
-        result = subprocess.run([sys.executable, "test_serial_inference.py"], 
-                              cwd=os.getcwd())
+        result = subprocess.run([sys.executable, "util/test_serial_inference.py"], 
+                              cwd=workspace_root)
         if result.returncode == 0:
             print("\n✅ Real-time inference test completed successfully!")
         else:
@@ -98,8 +101,8 @@ Output:
 """)
         input("Press Enter to start...")
         print("\n⏳ Generating synthetic data...\n")
-        result = subprocess.run([sys.executable, "serial_data_simulator.py"],
-                              cwd=os.getcwd())
+        result = subprocess.run([sys.executable, "util/serial_data_simulator.py"],
+                              cwd=workspace_root)
         if result.returncode == 0:
             print("\n✅ Synthetic data generated successfully!")
         else:
@@ -127,8 +130,8 @@ Use: For understanding deep learning model inputs (Autoencoder, LSTM)
 """)
         input("Press Enter to start...")
         print("\n⏳ Analyzing 3D array...\n")
-        result = subprocess.run([sys.executable, "analyze_3d_array.py"],
-                              cwd=os.getcwd())
+        result = subprocess.run([sys.executable, "analysis/analyze_3d_array.py"],
+                              cwd=workspace_root)
         if result.returncode == 0:
             print("\n✅ 3D array analysis completed!")
         else:
@@ -163,8 +166,8 @@ Use: For understanding classical ML model inputs (RandomForest, SVM, etc.)
 """)
         input("Press Enter to start...")
         print("\n⏳ Analyzing 2D data...\n")
-        result = subprocess.run([sys.executable, "analyze_2d_data.py"],
-                              cwd=os.getcwd())
+        result = subprocess.run([sys.executable, "analysis/analyze_2d_data.py"],
+                              cwd=workspace_root)
         if result.returncode == 0:
             print("\n✅ 2D data analysis completed!")
         else:
@@ -207,7 +210,7 @@ Expected Time: 2-5 minutes
         input("Press Enter to start...")
         print("\n⏳ Running full training pipeline...\n")
         result = subprocess.run([sys.executable, "main.py"],
-                              cwd=os.getcwd())
+                              cwd=workspace_root)
         if result.returncode == 0:
             print("\n✅ Training pipeline completed!")
         else:

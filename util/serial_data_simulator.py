@@ -13,13 +13,13 @@ import sys
 from pathlib import Path
 
 # 프로젝트 경로 설정
-PROJECT_ROOT = Path(__file__).parent
+PROJECT_ROOT = Path(__file__).parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
     from anomaly_detection import config
-except:
+except ImportError:
     print("❌ 설정 로드 실패. 프로젝트 루트에서 실행해주세요.")
     sys.exit(1)
 

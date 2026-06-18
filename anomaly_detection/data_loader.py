@@ -9,10 +9,6 @@ Supports:
 import os
 import pandas as pd
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')  # Use non-display backend
-import matplotlib.pyplot as plt
-import seaborn as sns
 from pathlib import Path
 from typing import Tuple, Dict, List, Optional
 import glob

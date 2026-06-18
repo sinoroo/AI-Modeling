@@ -14,10 +14,6 @@ from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     roc_auc_score, confusion_matrix, roc_curve, auc
 )
-import matplotlib
-matplotlib.use('Agg')  # Use non-display backend
-import matplotlib.pyplot as plt
-import seaborn as sns
 from typing import Dict, Tuple, Any
 import json
 import os
@@ -89,11 +85,15 @@ class ModelEvaluator:
                 print(f"    {metric_name}: {value:.4f}")
 
     @staticmethod
+    @staticmethod
     def plot_confusion_matrix(y_true: np.ndarray,
                              y_pred: np.ndarray,
                              model_name: str,
                              output_dir: str = "results") -> str:
         """Plot and save confusion matrix."""
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        
         os.makedirs(output_dir, exist_ok=True)
 
         cm = confusion_matrix(y_true, y_pred)
@@ -108,15 +108,14 @@ class ModelEvaluator:
         filepath = os.path.join(output_dir, f"cm_{model_name}.png")
         plt.savefig(filepath, dpi=100)
         plt.close()
-
-        return filepath
-
     @staticmethod
     def plot_roc_curve(y_true: np.ndarray,
                       y_proba: np.ndarray,
                       model_name: str,
                       output_dir: str = "results") -> str:
         """Plot and save ROC curve."""
+        import matplotlib.pyplot as plt
+        
         if len(np.unique(y_true)) > 2:
             return None  # Multi-class ROC not plotted here
         

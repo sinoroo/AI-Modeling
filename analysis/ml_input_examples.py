@@ -2,52 +2,193 @@
 고전 ML 모델에 데이터 입력하기 - 실전 코드
 
 3D Array를 고전 ML 모델에 입력하기 위해 2D로 변환하는 여러 방법들
+FFT 샘플 크기를 변수화하여 성능을 비교합니다.
 """
+
+import sys
+import os
+from pathlib import Path
+
+# 프로젝트 경로 설정
+PROJECT_ROOT = Path(__file__).parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier, IsolationForest
 from sklearn.svm import OneClassSVM
 from sklearn.preprocessing import StandardScaler
 
-# ============================================================================
-# 1. 테스트 데이터 준비
-# ============================================================================
+# config에서 FFT_SAMPLE_SIZES 가져오기 (동적 윈도우 크기)
+try:
+    from anomaly_detection import config
+    SAMPLE_SIZES = config.FFT_SAMPLE_SIZES
+    print(f"✓ config에서 FFT_SAMPLE_SIZES 로드: {SAMPLE_SIZES}\n")
+except:
+    SAMPLE_SIZES = [32, 64, 128, 256]
+    print(f"⚠️  기본 FFT_SAMPLE_SIZES 사용: {SAMPLE_SIZES}\n")
 
-# 실제 3D Array 형태
-X = np.random.randn(29, 64, 6)  # (29 windows, 64 samples, 6 features)
-y = np.random.randint(0, 2, 29)  # 레이블 (0: 정상, 1: 이상)
+# ============================================================================
+# 1. 동적 테스트 데이터 준비
+# ============================================================================
 
 print("=" * 80)
-print("원본 3D Array 정보")
+print("FFT 샘플 크기별 3D Array 생성 및 분석")
 print("=" * 80)
-print(f"Shape: {X.shape}")
-print(f"  - 29: 시간 윈도우")
-print(f"  - 64: 각 윈도우의 샘플 개수")
-print(f"  - 6: 특성 개수 (vibration, RMS, Peak, Crest, Kurtosis, Skewness)")
+
+def create_test_data(window_size: int, n_windows: int = 100, n_features: int = 6):
+    """
+    테스트 3D Array 생성
+    
+    Args:
+        window_size: 각 윈도우의 샘플 개수
+        n_windows: 윈도우 개수
+        n_features: 특성 개수
+    
+    Returns:
+        X: 3D Array, y: 레이블
+    """
+    X = np.random.randn(n_windows, window_size, n_features)
+    y = np.random.randint(0, 2, n_windows)
+    return X, y
 
 
 # ============================================================================
-# 2. 방법 1: 모든 특성을 포함한 평탄화 (간단함)
+# 2. 각 샘플 크기로 성능 비교
 # ============================================================================
 
-print("\n" + "=" * 80)
-print("방법 1️⃣ : 모든 샘플 × 모든 특성 평탄화")
-print("=" * 80)
+results = {}
+
+for window_size in SAMPLE_SIZES:
+    print(f"\n{'='*80}")
+    print(f"윈도우 크기: {window_size}")
+    print(f"{'='*80}")
+    
+    # 테스트 데이터 생성
+    X_3d, y = create_test_data(window_size=window_size, n_windows=100)
+    print(f"✓ 3D Array 생성: {X_3d.shape}")
+    print(f"  - 100: 윈도우 개수")
+    print(f"  - {window_size}: 각 윈도우의 샘플 개수")
+    print(f"  - 6: 특성 개수 (vibration, RMS, Peak, Crest, Kurtosis, Skewness)")
+    
+    # ========================================================================
+    # 방법 1: 모든 특성을 포함한 평탄화 (간단함)
+    # ========================================================================
+    
+    print(f"\n  [방법 1] 모든 샘플 × 모든 특성 평탄화")
+    X_flat_all = X_3d.reshape(X_3d.shape[0], -1)
+    print(f"  변환 결과: {X_flat_all.shape}")
+    print(f"    - 100: 윈도우 개수")
+    print(f"    - {window_size * 6}: {window_size} 샘플 × 6 특성")
+    
+    # 고전 ML 모델 학습
+    rf_model_1 = RandomForestClassifier(n_estimators=100, random_state=42)
+    rf_model_1.fit(X_flat_all, y)
+    y_pred_1 = rf_model_1.predict(X_flat_all)
+    accuracy_1 = np.mean(y_pred_1 == y)
+    print(f"  RandomForest 정확도: {accuracy_1:.2%}")
+    
+    # ========================================================================
+    # 방법 2: 진동값만 사용 (작은 입력)
+    # ========================================================================
+    
+    print(f"\n  [방법 2] 진동값만 추출 (특성 0)")
+    X_vibration = X_3d[:, :, 0]
+    print(f"  변환 결과: {X_vibration.shape}")
+    print(f"    - 100: 윈도우 개수")
+    print(f"    - {window_size}: 샘플 개수 (진동값만)")
+    
+    rf_model_2 = RandomForestClassifier(n_estimators=100, random_state=42)
+    rf_model_2.fit(X_vibration, y)
+    y_pred_2 = rf_model_2.predict(X_vibration)
+    accuracy_2 = np.mean(y_pred_2 == y)
+    print(f"  RandomForest 정확도: {accuracy_2:.2%}")
+    
+    # ========================================================================
+    # 방법 3: 윈도우별 집계 특성 (권장!)
+    # ========================================================================
+    
+    print(f"\n  [방법 3] 윈도우별 집계 특성 (권장) - FFT 기반")
+    X_fft = np.abs(np.fft.fft(X_3d[:, :, 0], axis=1))
+    X_fft_reduced = X_fft[:, :min(10, window_size)]  # 처음 10개 FFT 빈 사용
+    print(f"  FFT 변환 결과: {X_fft.shape}")
+    print(f"  FFT 축소 결과: {X_fft_reduced.shape} (처음 10개 FFT 빈 사용)")
+    
+    # 함수형 특성 추가 (RMS, Peak, Std)
+    rms_features = np.sqrt(np.mean(X_3d**2, axis=1))  # RMS
+    peak_features = np.max(np.abs(X_3d), axis=1)      # Peak
+    std_features = np.std(X_3d, axis=1)               # Std
+    
+    X_aggregated = np.hstack([
+        rms_features,
+        peak_features,
+        std_features
+    ])
+    print(f"  집계 특성 결과: {X_aggregated.shape}")
+    print(f"    - 100: 윈도우 개수")
+    print(f"    - 18: 6 특성 × (RMS + Peak + Std)")
+    
+    rf_model_3 = RandomForestClassifier(n_estimators=100, random_state=42)
+    rf_model_3.fit(X_aggregated, y)
+    y_pred_3 = rf_model_3.predict(X_aggregated)
+    accuracy_3 = np.mean(y_pred_3 == y)
+    print(f"  RandomForest 정확도: {accuracy_3:.2%}")
+    
+    # 결과 저장
+    results[window_size] = {
+        "method_1_flat": accuracy_1,
+        "method_2_vibration": accuracy_2,
+        "method_3_aggregated": accuracy_3,
+        "best_method": max([
+            ("Method 1 (평탄화)", accuracy_1),
+            ("Method 2 (진동값)", accuracy_2),
+            ("Method 3 (집계)", accuracy_3)
+        ], key=lambda x: x[1])
+    }
+
+
+# ============================================================================
+# 3. 최종 결과 비교
+# ============================================================================
+
+print(f"\n\n{'='*80}")
+print("📊 최종 비교 - 샘플 크기별 최고 성능")
+print(f"{'='*80}\n")
+print(f"{'윈도우 크기':<15} {'최고 방법':<25} {'정확도':<10}")
+print("-" * 50)
+
+for window_size, result in results.items():
+    best_method, best_acc = result["best_method"]
+    print(f"{window_size:<15} {best_method:<25} {best_acc:>8.2%}")
+
+
+# ============================================================================
+# 독립 실행 섹션: 고정 크기(64) 데이터로 다양한 입력 방식 테스트
+# ============================================================================
+
+print(f"\n\n{'='*80}")
+print("🔥 독립 실행 섹션: 다양한 입력 방식 비교")
+print(f"{'='*80}\n")
+
+# 테스트용 고정 데이터 생성
+X, y = create_test_data(window_size=64, n_windows=100)
+print(f"✓ 테스트 데이터 생성: {X.shape} (100 윈도우, 64 샘플, 6 특성)")
+
+# 방법 1: 모든 특성 평탄화
+print(f"\n{'='*80}")
+print("방법 1️⃣ : 모든 특성 평탄화")
+print(f"{'='*80}")
 
 X_flat_all = X.reshape(X.shape[0], -1)
 print(f"변환 결과: {X_flat_all.shape}")
-print(f"  - 29: 윈도우 개수")
+print(f"  - 100: 윈도우 개수")
 print(f"  - 384: 64 샘플 × 6 특성")
 
-# 고전 ML 모델 학습
-print("\n모델 학습 중...")
 rf_model_1 = RandomForestClassifier(n_estimators=100, random_state=42)
 rf_model_1.fit(X_flat_all, y)
-print(f"✓ RandomForest 학습 완료")
-
-# 예측
 y_pred_1 = rf_model_1.predict(X_flat_all)
 accuracy_1 = np.mean(y_pred_1 == y)
+print(f"✓ RandomForest 학습 완료")
 print(f"정확도: {accuracy_1:.2%}")
 print(f"특성 중요도 상위 5:")
 top_features = np.argsort(rf_model_1.feature_importances_)[-5:][::-1]
@@ -66,7 +207,7 @@ print("=" * 80)
 
 X_vibration_only = X[:, :, 0]  # 첫 번째 특성만 추출
 print(f"변환 결과: {X_vibration_only.shape}")
-print(f"  - 29: 윈도우 개수")
+print(f"  - 100: 윈도우 개수")
 print(f"  - 64: 샘플 개수 (진동값만)")
 
 rf_model_2 = RandomForestClassifier(n_estimators=100, random_state=42)
@@ -119,7 +260,7 @@ def aggregate_window_features(X):
 
 X_agg = aggregate_window_features(X)
 print(f"변환 결과: {X_agg.shape}")
-print(f"  - 29: 윈도우 개수")
+print(f"  - 100: 윈도우 개수")
 print(f"  - 24: 6 특성 × 4 통계 (mean, std, max, min)")
 
 print("\n특성 구성:")

@@ -215,7 +215,8 @@ class Preprocessor:
     def create_windows(self, data: pd.DataFrame, 
                       feature_cols: List[str],
                       label_col: Optional[str] = None,
-                      step_size: Optional[int] = None) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+                      step_size: Optional[int] = None,
+                      window_size: Optional[int] = None) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         """
         Create sliding windows from time-series data.
 
@@ -224,20 +225,24 @@ class Preprocessor:
             feature_cols: Feature columns
             label_col: Optional label column
             step_size: Step size for windows (if None, uses config)
+            window_size: Window size for samples (if None, uses self.window_size)
 
         Returns:
             Tuple of (windows, labels)
         """
         if step_size is None:
             step_size = config.STEP_SIZE
+            
+        if window_size is None:
+            window_size = self.window_size
 
         X_windows = []
         y_windows = []
 
         n_samples = len(data)
         
-        for start_idx in range(0, n_samples - self.window_size + 1, step_size):
-            end_idx = start_idx + self.window_size
+        for start_idx in range(0, n_samples - window_size + 1, step_size):
+            end_idx = start_idx + window_size
             
             window = data.iloc[start_idx:end_idx][feature_cols].values
             X_windows.append(window)
@@ -251,14 +256,15 @@ class Preprocessor:
         X = np.array(X_windows)
         y = np.array(y_windows) if label_col else None
 
-        print(f"[Preprocessor] Created {len(X_windows)} windows of size {self.window_size}")
+        print(f"[Preprocessor] Created {len(X_windows)} windows of size {window_size}")
 
         return X, y
 
     def preprocess_pipeline(self, data: pd.DataFrame, 
                            feature_cols: List[str],
                            label_col: Optional[str] = None,
-                           fit_scaler: bool = False) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+                           fit_scaler: bool = False,
+                           window_size: Optional[int] = None) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         """
         Full preprocessing pipeline.
 
@@ -267,6 +273,7 @@ class Preprocessor:
             feature_cols: Feature columns
             label_col: Optional label column
             fit_scaler: Whether to fit scaler (True for training data)
+            window_size: Window size for creating windows (if None, uses self.window_size)
 
         Returns:
             Tuple of (windows, labels)
@@ -293,7 +300,7 @@ class Preprocessor:
 
         # Step 4: Create windows
         print("  - Creating time-series windows...")
-        X_windows, y_windows = self.create_windows(data, feature_cols, label_col)
+        X_windows, y_windows = self.create_windows(data, feature_cols, label_col, window_size=window_size)
 
         # Step 5: Feature engineering (optional)
         if config.USE_STATISTICAL_FEATURES:
@@ -324,7 +331,8 @@ def preprocess_data(train_data: pd.DataFrame,
                     val_data: pd.DataFrame,
                     test_data: pd.DataFrame,
                     feature_cols: List[str],
-                    label_col: Optional[str] = None) -> Dict:
+                    label_col: Optional[str] = None,
+                    window_size: Optional[int] = None) -> Dict:
     """
     Preprocess all data splits.
 
@@ -334,24 +342,25 @@ def preprocess_data(train_data: pd.DataFrame,
         test_data: Test DataFrame
         feature_cols: Feature columns
         label_col: Optional label column
+        window_size: Window size for creating windows (if None, uses config.WINDOW_SIZE)
 
     Returns:
         Dictionary with preprocessed data and preprocessor
     """
-    preprocessor = Preprocessor()
+    preprocessor = Preprocessor(window_size=window_size or config.WINDOW_SIZE)
 
     # Process training data (fit on this)
     X_train, y_train = preprocessor.preprocess_pipeline(
-        train_data, feature_cols, label_col, fit_scaler=True
+        train_data, feature_cols, label_col, fit_scaler=True, window_size=window_size
     )
 
     # Process validation and test data (use fitted scaler)
     X_val, y_val = preprocessor.preprocess_pipeline(
-        val_data, feature_cols, label_col, fit_scaler=False
+        val_data, feature_cols, label_col, fit_scaler=False, window_size=window_size
     )
 
     X_test, y_test = preprocessor.preprocess_pipeline(
-        test_data, feature_cols, label_col, fit_scaler=False
+        test_data, feature_cols, label_col, fit_scaler=False, window_size=window_size
     )
 
     return {

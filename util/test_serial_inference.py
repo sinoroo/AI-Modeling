@@ -34,6 +34,9 @@ os.environ['PYTHONIOENCODING'] = 'utf-8'
 sys.stdout.reconfigure(encoding='utf-8')
 
 PROJECT_ROOT = Path(__file__).parent
+PARENT_ROOT = PROJECT_ROOT.parent
+if str(PARENT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PARENT_ROOT))
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -44,6 +47,7 @@ try:
     print("✅ 모듈 로드 성공\n")
 except Exception as e:
     print(f"❌ 모듈 로드 실패: {e}\n")
+    print(f"sys.path: {sys.path}\n")
     sys.exit(1)
 
 
@@ -54,12 +58,20 @@ except Exception as e:
 class RealtimeDataBuffer:
     """실시간 데이터 버퍼 관리"""
     
-    def __init__(self, window_size: int = 64):
-        self.window_size = window_size
-        self.buffer = deque(maxlen=window_size)
+    def __init__(self, window_size: int = None):
+        """
+        버퍼 초기화
+        
+        Args:
+            window_size: 윈도우 크기 (None이면 config에서 가져옴)
+        """
+        self.window_size = window_size or WINDOW_SIZE
+        self.buffer = deque(maxlen=self.window_size)
         self.history = []  # 모든 데이터 저장
-        self.timestamps = deque(maxlen=window_size)
+        self.timestamps = deque(maxlen=self.window_size)
         self.current_time = 0
+        
+        print(f"[RealtimeDataBuffer] 윈도우 크기: {self.window_size}")
         
     def add_sample(self, value: float, timestamp: float = None):
         """샘플 추가"""

@@ -73,6 +73,11 @@ MISSING_VALUE_METHOD = "interpolate"  # "interpolate", "forward_fill", or "drop"
 USE_FFT_FEATURES = True
 USE_STATISTICAL_FEATURES = True  # RMS, Peak, Kurtosis, Skewness
 
+# FFT Sample Sizes for comparison and optimization
+# Testing different window sizes to find optimal FFT parameters
+FFT_SAMPLE_SIZES = [32, 64, 128, 256]  # Different window sizes for FFT analysis
+FFT_BINS_SIZES = [5, 10, 20, 32]       # Different FFT bin sizes to extract
+
 # ============================================================================
 # MODEL CONFIGURATION
 # ============================================================================
@@ -87,11 +92,56 @@ TEST_RATIO = 0.15
 
 # Classical ML Models
 CLASSICAL_MODELS = {
+    # Ensemble Methods
     "RandomForest": {
         "n_estimators": 100,
         "max_depth": 15,
         "random_state": RANDOM_SEED,
     },
+    "GradientBoosting": {
+        "n_estimators": 100,
+        "learning_rate": 0.1,
+        "max_depth": 5,
+        "random_state": RANDOM_SEED,
+    },
+    "AdaBoost": {
+        "n_estimators": 100,
+        "learning_rate": 0.1,
+        "random_state": RANDOM_SEED,
+    },
+    "ExtraTrees": {
+        "n_estimators": 100,
+        "max_depth": 15,
+        "random_state": RANDOM_SEED,
+    },
+    
+    # Tree-based
+    "DecisionTree": {
+        "max_depth": 15,
+        "random_state": RANDOM_SEED,
+    },
+    
+    # Distance-based
+    "KNearestNeighbors": {
+        "n_neighbors": 5,
+        "weights": "distance",
+    },
+    
+    # Probability-based
+    "GaussianNB": {},
+    "LogisticRegression": {
+        "max_iter": 1000,
+        "random_state": RANDOM_SEED,
+    },
+    
+    # SVM
+    "SVM": {
+        "kernel": "rbf",
+        "gamma": "scale",
+        "random_state": RANDOM_SEED,
+    },
+    
+    # Anomaly Detection (Original)
     "IsolationForest": {
         "n_estimators": 100,
         "contamination": 0.1,
@@ -101,6 +151,37 @@ CLASSICAL_MODELS = {
         "kernel": "rbf",
         "gamma": "auto",
         "nu": 0.05,
+    },
+    "LocalOutlierFactor": {
+        "n_neighbors": 20,
+        "contamination": 0.1,
+    },
+    "EllipticEnvelope": {
+        "contamination": 0.1,
+        "random_state": RANDOM_SEED,
+    },
+    
+    # Anomaly Detection (New - Advanced)
+    "RobustCovariance": {
+        "contamination": 0.1,
+    },
+    "MinCovDet": {
+        "contamination": 0.1,
+        "random_state": RANDOM_SEED,
+    },
+    "KMeansAnomaly": {
+        "n_clusters": 5,
+        "n_init": 10,
+        "random_state": RANDOM_SEED,
+        "contamination": 0.1,  # For threshold calculation
+    },
+    "PCAAnomaly": {
+        "n_components": 0.95,  # Keep 95% of variance
+        "contamination": 0.1,  # For threshold calculation
+    },
+    "DBSCAN": {
+        "eps": 0.5,
+        "min_samples": 5,
     },
 }
 
