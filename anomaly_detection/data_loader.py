@@ -12,6 +12,7 @@ import numpy as np
 from pathlib import Path
 from typing import Tuple, Dict, List, Optional
 import glob
+import matplotlib.pyplot as plt
 
 from . import config
 

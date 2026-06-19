@@ -266,7 +266,7 @@ class Preprocessor:
                            fit_scaler: bool = False,
                            window_size: Optional[int] = None) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         """
-        Full preprocessing pipeline.
+        Full preprocessing pipeline with FFT feature engineering.
 
         Args:
             data: Input DataFrame
@@ -276,7 +276,7 @@ class Preprocessor:
             window_size: Window size for creating windows (if None, uses self.window_size)
 
         Returns:
-            Tuple of (windows, labels)
+            Tuple of (windows_with_fft, labels)
         """
         print("[Preprocessor] Starting preprocessing pipeline...")
         
@@ -302,15 +302,57 @@ class Preprocessor:
         print("  - Creating time-series windows...")
         X_windows, y_windows = self.create_windows(data, feature_cols, label_col, window_size=window_size)
 
-        # Step 5: Feature engineering (optional)
-        if config.USE_STATISTICAL_FEATURES:
-            print("  - Adding statistical features...")
-            # For now, we'll keep raw windowed data
-            # Statistical features can be extracted during model training
+        # Step 5: Feature engineering with FFT
+        if config.USE_FFT_FEATURES:
+            print("  - Adding FFT features...")
+            X_windows = self._add_fft_features(X_windows)
 
         print("[Preprocessor] Preprocessing complete!")
         
         return X_windows, y_windows
+
+    def _add_fft_features(self, X_windows: np.ndarray) -> np.ndarray:
+        """
+        Add FFT features to windows.
+
+        Args:
+            X_windows: Windows array of shape (n_windows, window_size, n_features)
+
+        Returns:
+            Windows with FFT features appended
+        """
+        n_windows, window_size, n_features = X_windows.shape
+        n_fft_bins = config.FFT_N_BINS
+        
+        # Extract FFT features for each window
+        fft_features_list = []
+        
+        for w in range(n_windows):
+            window_data = X_windows[w]  # (window_size, n_features)
+            
+            # For each feature, compute FFT
+            fft_feats = []
+            for f in range(n_features):
+                signal = window_data[:, f]
+                # Compute FFT and take magnitude
+                fft_vals = np.abs(np.fft.fft(signal))
+                # Take first n_fft_bins frequencies (DC + positive frequencies)
+                fft_feats.append(fft_vals[:n_fft_bins])
+            
+            # Concatenate all FFT features for this window
+            window_fft = np.concatenate(fft_feats)  # (n_features * n_fft_bins,)
+            fft_features_list.append(window_fft)
+        
+        fft_features = np.array(fft_features_list)  # (n_windows, n_features * n_fft_bins)
+        
+        # Reshape to 3D: (n_windows, n_fft_bins, n_features) for consistency
+        X_with_fft = fft_features.reshape(n_windows, n_fft_bins, n_features)
+        
+        print(f"    FFT features shape: {X_with_fft.shape}")
+        print(f"    Original shape: (n_windows={n_windows}, window_size={window_size}, n_features={n_features})")
+        print(f"    New shape: (n_windows={n_windows}, n_fft_bins={n_fft_bins}, n_features={n_features})")
+        
+        return X_with_fft
 
     def save(self, filepath: str):
         """Save preprocessor (scaler) to disk."""

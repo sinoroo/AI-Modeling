@@ -135,7 +135,8 @@ class MLflowTracker:
             model_name: Name of the model
             artifact_path: Artifact path
         """
-        mlflow.pytorch.log_model(model, artifact_path)
+        # Use pickle serialization format to avoid requiring input_example
+        mlflow.pytorch.log_model(model, artifact_path, serialization_format="pickle")
         print(f"[MLflow] Logged PyTorch model: {model_name}")
 
     def log_sklearn_model(self, model, model_name: str,

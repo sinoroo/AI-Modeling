@@ -91,8 +91,8 @@ def run_learning_path(analysis_dir):
             "desc": "3D Array 구조 이해하기",
             "detail": """
     📌 이 단계에서 배우는 것:
-    • 3D Array의 구조 (shape: 154, 64, 6)
-    • 각 차원의 의미
+    • 3D Array의 구조 (shape: 154, 32, 1)
+    • 각 차원의 의미 (윈도우 수, FFT 빈 개수, 특성 개수)
     • 배열 슬라이싱 및 인덱싱 방법
     • 데이터에 접근하는 다양한 방법
     

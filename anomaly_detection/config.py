@@ -71,7 +71,8 @@ MISSING_VALUE_METHOD = "interpolate"  # "interpolate", "forward_fill", or "drop"
 
 # Feature engineering
 USE_FFT_FEATURES = True
-USE_STATISTICAL_FEATURES = True  # RMS, Peak, Kurtosis, Skewness
+USE_STATISTICAL_FEATURES = False  # Disabled - using only FFT features
+FFT_N_BINS = 32  # Number of FFT bins to extract
 
 # FFT Sample Sizes for comparison and optimization
 # Testing different window sizes to find optimal FFT parameters

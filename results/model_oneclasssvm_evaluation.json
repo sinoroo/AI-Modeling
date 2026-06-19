@@ -1,6 +1,6 @@
 {
   "model_name": "OneClassSVM",
-  "timestamp": "2026-06-17T15:35:26.567151",
+  "timestamp": "2026-06-19T13:35:54.499473",
   "metrics": {
     "accuracy": 0.0,
     "precision": 0.0,
@@ -14,9 +14,9 @@
       0
     ],
     [
-      8,
+      18,
       0,
-      10
+      0
     ],
     [
       9,
