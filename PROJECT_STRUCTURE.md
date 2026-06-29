@@ -12,9 +12,13 @@ AI-Modeling/
 │   ├── config.py                     ← ⚙️ 중앙 설정 파일 (data_new_format 기본)
 │   ├── data_loader.py                ← 📊 새 포맷 데이터 로딩 & EDA
 │   ├── preprocessing.py              ← 🔧 데이터 전처리 & 피처 엔지니어링
-│   ├── model_training.py             ← 🤖 모델 훈련 (Classical ML + DL)
+│   ├── feature_extraction.py         ← ⭐ NEW: 학습/추론 공용 특징 추출
+│   ├── model_training.py             ← 🤖 모델 훈련 (Classical ML + DL) [레거시 A]
 │   ├── evaluation.py                 ← 📈 평가 & 메트릭
 │   └── inference_serial.py           ← 🔴 실시간 시리얼 추론
+│
+├── 📄 build_feature_table.py          ← ⭐ NEW: 원시 CSV → 표준 특징 테이블 [표준화 B]
+├── 📄 train_from_feature_table.py     ← ⭐ NEW: 특징 테이블 → 5클래스 분류 [표준화 B]
 │
 ├── 📂 analysis/                       ← 데이터 분석 도구
 │   ├── analyze_3d_array.py           ← 3D 배열 분석
@@ -56,25 +60,38 @@ AI-Modeling/
 │   ├── FEATURES_EXPLANATION.md       ← 피처 설명
 │   └── MODEL_IO_FORMAT.md            ← I/O 포맷 명세
 │
-├── 📂 Data (data_new_format/)        ← 새 포맷 데이터 (메타데이터 + 센서)
-│   ├── train/                         ← 훈련 데이터 CSV
+├── 📂 Data (data_new_format/)        ← 새 포맷 데이터 (메타데이터 + 센서, 5클래스)
+│   ├── train/                         ← 훈련 데이터 CSV ([동력]/[설비]/[상태] 트리)
 │   ├── val/                           ← 검증 데이터 CSV
 │   └── test/                          ← 테스트 데이터 CSV
+│
+├── 📂 feature_tables/                 ← ⭐ NEW: 표준화 특징 테이블 (윈도우=1행)
+│   ├── feature_table_train.csv
+│   ├── feature_table_val.csv
+│   ├── feature_table_test.csv
+│   └── normalization_stats.json       ← 설비별 정상 기준 통계
 │
 ├── 📂 data/                          ← 빈 폴더 (레거시 - 더 이상 사용 안 함)
 │
 ├── 📂 Models & Results
 │   ├── models/                       ← ✅ 훈련된 모델
+│   │   # [A] 레거시 파이프라인 (main.py / model_training.py)
 │   │   ├── random_forest_model.pkl   (RandomForest)
 │   │   ├── isolation_forest_model.pkl (IsolationForest)
 │   │   ├── one_class_svm_model.pkl   (OneClassSVM)
 │   │   ├── autoencoder_model.pt      (PyTorch)
 │   │   ├── lstm_model.pt             (PyTorch)
 │   │   ├── scaler.pkl                (StandardScaler)
-│   │   └── preprocessor.pkl          (Preprocessor)
+│   │   ├── preprocessor.pkl          (Preprocessor)
+│   │   # [B] 표준화 파이프라인 (train_from_feature_table.py) ⭐ NEW
+│   │   ├── clf_random_forest.pkl     (5클래스 고장 분류기)
+│   │   ├── clf_scaler.pkl            (분류기용 스케일러)
+│   │   ├── anomaly_isolation_forest.pkl (이상탐지 One-Class)
+│   │   └── anomaly_scaler.pkl        (이상탐지용 스케일러)
 │   │
 │   ├── results/                      ← 평가 결과
-│   │   ├── model_*_evaluation.json   (메트릭)
+│   │   ├── model_*_evaluation.json   (레거시 모델별 메트릭)
+│   │   ├── feature_table_evaluation.json (⭐ NEW: 5클래스/이상탐지)
 │   │   └── evaluation_report.json    (전체 보고서)
 │   │
 │   ├── eda_results/                  ← EDA 시각화
@@ -106,7 +123,39 @@ AI-Modeling/
 
 ## 🔄 Data Flow & Processing Pipeline
 
-### Complete Training Pipeline
+> 이 프로젝트에는 **독립적인 두 파이프라인**이 있습니다.
+> - **[A] 레거시**: `main.py` → `model_training.py` (윈도우 원시신호, 15개 모델)
+> - **[B] 표준화**: `build_feature_table.py` → `train_from_feature_table.py` (5클래스 분류)
+>
+> `train_from_feature_table.py` 는 `model_training.py` 와 **연계되지 않으며**,
+> sklearn 을 직접 사용합니다. 두 파이프라인의 공통 기반은 `feature_extraction.py` 입니다.
+
+### Standardized Pipeline [B] (NEW ⭐)
+
+```
+data_new_format/**/*.csv  (원시 진동, 길이 12000/500/300 혼재, 5클래스)
+    ↓ [build_feature_table.py --regroup]
+    ├─ anomaly_detection/feature_extraction.py (공용 특징)
+    │    ├─ make_windows: 4000샘플(1초) 고정 윈도우, 50% overlap
+    │    ├─ normalize_amplitude: 설비별 정상 기준 Z-score
+    │    ├─ time_features: rms/peak/crest/std/kurtosis/skewness/p2p
+    │    └─ order_spectrum_features: 회전차수(order) 대역 + 스펙트럼 통계
+    ↓
+    feature_tables/feature_table_{train,val,test}.csv  (윈도우=1행, 20 특징)
+    normalization_stats.json
+    ↓ [train_from_feature_table.py]  (sklearn 직접)
+    ├─ 과제1: RandomForestClassifier → 5클래스 (test acc ~99.5%)
+    └─ 과제2: IsolationForest(정상만 학습) → 이상탐지
+    ↓
+    models/clf_random_forest.pkl, clf_scaler.pkl,
+           anomaly_isolation_forest.pkl, anomaly_scaler.pkl
+    results/feature_table_evaluation.json
+    ↓ [util/test_serial_inference.py --mode classify]
+    └─ FaultClassifierEngine
+         └─ feature_extraction.py (동일 특징) → 실시간 5클래스 추론
+```
+
+### Complete Training Pipeline [A] (레거시)
 
 ```
 raw_data.csv
@@ -231,14 +280,22 @@ main.py
 └── anomaly_detection/evaluation.py ✓
     └─ (all depend on config.py)
 
-test_serial_inference.py ✓ (Independent) 
-├── anomaly_detection/config.py
-├── anomaly_detection/preprocessing.py
-├── serial_data_simulator.py
-└── sklearn, torch, etc.
+# [B] 표준화 파이프라인 (NEW ⭐)
+build_feature_table.py ✓
+└── anomaly_detection/feature_extraction.py   (model_training 미사용)
+
+train_from_feature_table.py ✓ (Independent)
+├── feature_tables/*.csv (build_feature_table.py 산출물)
+└── sklearn (RandomForest, IsolationForest) — model_training 미사용
+
+test_serial_inference.py ✓
+├── anomaly_detection/feature_extraction.py   (학습과 동일 특징)
+├── serial_data_simulator.py (RealSignalStreamer)
+└── models/clf_random_forest.pkl, clf_scaler.pkl
 
 serial_data_simulator.py ✓ (Independent)
-└── numpy, scipy
+├── anomaly_detection/config.py
+└── numpy, pandas
 
 analyze_*.py ✓ (Independent analysis tools)
 └── Various visualization libraries
@@ -351,7 +408,37 @@ python QUICK_START.py
 
 ## 📊 Data Formats
 
-### Input: Raw CSV
+### Input: 진동 CSV (data_new_format, 새 포맷)
+
+```
+# 헤더 9줄(메타데이터) + 데이터 2열(time, vibration)
+Date,2020-11-25 16:39:09
+Filename,STFMK-...004.dat
+Data Label,정상              ← 5클래스: 정상/축정렬불량/회전체불평형/베어링불량/벨트느슨함
+Label_No,00
+Motor Spec,L-DSF-01, 1730,2.2, 8.6,   ← 설비ID, RPM, 동력(kW), 전류(A)
+Period,3SEC
+Sample Rate,4000
+RMS,0.005718,
+Data Length,12000,
+0,0.0031755939,             ← 이하 time, vibration
+0.00025,0.0026699300,
+...
+```
+
+### Standardized Feature Table (NEW ⭐, feature_tables/*.csv)
+
+윈도우 1개 = 1행. `build_feature_table.py` 산출물.
+
+```csv
+source_file,equipment_id,power_kw,rpm,window_index,padded,
+rms,peak,crest_factor,std,kurtosis,skewness,p2p,
+spectral_centroid,spectral_entropy,spectral_energy,
+band_1x,band_1x_ratio,band_2x,band_2x_ratio,band_3x,band_3x_ratio,band_high,band_high_ratio,
+label_name,label_no,is_anomaly
+```
+
+### Legacy: Raw CSV (구 포맷, 참고용)
 
 ```csv
 sensor_0,sensor_1,sensor_2,sensor_3,sensor_4,sensor_5,label
@@ -420,6 +507,7 @@ array([
 
 | Version | Date | Changes |
 |---------|------|---------|
+| v3.0 | June 2026 | ⭐ 표준화 파이프라인[B] 추가: feature_extraction 공용 모듈, build/train_from_feature_table, 5클래스 고장 분류, 회전차수(order) FFT 특징, 설비단위 재분할 |
 | v2.0 | June 2026 | Added real-time serial inference, synthetic data generation |
 | v1.5 | May 2026 | Comprehensive documentation, 3D/2D array analysis |
 | v1.0 | April 2026 | Initial release with classical ML and DL models |
@@ -455,6 +543,6 @@ array([
 
 ---
 
-**Last Updated:** June 10, 2026  
+**Last Updated:** June 22, 2026  
 **Maintained By:** AI-Modeling Team  
 **Status:** ✅ Production Ready

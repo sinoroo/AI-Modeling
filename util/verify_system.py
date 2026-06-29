@@ -7,6 +7,13 @@ import sys
 import os
 from pathlib import Path
 
+# 프로젝트 루트를 sys.path 에 추가 (util/ 에서 실행해도 패키지 import 가능)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+# 상대 경로 점검이 루트 기준이 되도록 작업 디렉터리 이동
+os.chdir(PROJECT_ROOT)
+
 print("\n" + "=" * 80)
 print("ANOMALY DETECTION PIPELINE - END-TO-END VERIFICATION")
 print("=" * 80)
@@ -63,6 +70,10 @@ required_files = [
     "anomaly_detection/model_training.py",
     "anomaly_detection/evaluation.py",
     "anomaly_detection/inference_serial.py",
+    "anomaly_detection/feature_extraction.py",
+    # 표준화/학습 스크립트
+    "build_feature_table.py",
+    "train_from_feature_table.py",
     # analysis folder
     "analysis/analyze_3d_array.py",
     "analysis/analyze_2d_data.py",
@@ -194,6 +205,62 @@ try:
     
 except Exception as e:
     print(f"  ✗ Data preprocessing failed - {e}")
+
+# Step 7b: Standardized feature pipeline & 5-class model
+print("\n[7b] Checking standardized feature pipeline & 5-class model...")
+
+# 7b-1: feature tables
+feature_tables = {
+    "feature_tables/feature_table_train.csv": "Train feature table",
+    "feature_tables/feature_table_val.csv": "Val feature table",
+    "feature_tables/feature_table_test.csv": "Test feature table",
+    "feature_tables/normalization_stats.json": "Per-equipment norm stats",
+}
+for fpath, desc in feature_tables.items():
+    if Path(fpath).exists():
+        print(f"  ✓ {fpath:45s} - {desc}")
+    else:
+        print(f"  ⚠️  {fpath:45s} - 없음 (build_feature_table.py 실행 필요)")
+
+# 7b-2: trained classifier artifacts
+model_artifacts = {
+    "models/clf_random_forest.pkl": "5-class fault classifier",
+    "models/clf_scaler.pkl": "Classifier feature scaler",
+}
+clf_ready = all(Path(p).exists() for p in model_artifacts)
+for mpath, desc in model_artifacts.items():
+    if Path(mpath).exists():
+        print(f"  ✓ {mpath:45s} - {desc}")
+    else:
+        print(f"  ⚠️  {mpath:45s} - 없음 (train_from_feature_table.py 실행 필요)")
+
+# 7b-3: feature extraction module quick test
+try:
+    from anomaly_detection import feature_extraction as fe
+    sig = __import__("numpy").random.randn(fe.WINDOW_SIZE)
+    vec = fe.extract_feature_vector(sig, rpm=1730.0, power_kw=2.2)
+    assert vec.shape[0] == len(fe.FEATURE_COLUMNS), "특징 차원 불일치"
+    print(f"  ✓ feature_extraction: {len(fe.FEATURE_COLUMNS)}개 특징 벡터 생성 OK")
+except Exception as e:
+    print(f"  ✗ feature_extraction 테스트 실패 - {e}")
+
+# 7b-4: end-to-end 5-class inference test (모델이 있으면)
+if clf_ready:
+    try:
+        import joblib
+        import numpy as _np
+        from anomaly_detection import feature_extraction as fe
+        clf = joblib.load("models/clf_random_forest.pkl")
+        scaler = joblib.load("models/clf_scaler.pkl")
+        test_sig = _np.random.randn(fe.WINDOW_SIZE) * 0.01
+        _vec = fe.extract_feature_vector(test_sig, rpm=1730.0, power_kw=2.2)
+        _pred = clf.predict(scaler.transform(_vec.reshape(1, -1)))[0]
+        print(f"  ✓ 5-class 추론 OK (예: 예측='{_pred}', "
+              f"클래스={list(clf.classes_)})")
+    except Exception as e:
+        print(f"  ✗ 5-class 추론 테스트 실패 - {e}")
+else:
+    print("  ⚠️  5-class 모델 미존재 - 추론 테스트 생략")
 
 # Step 8: Summary
 print("\n" + "=" * 80)

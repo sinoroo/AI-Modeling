@@ -1,0 +1,144 @@
+{
+  "feature_cols": [
+    "power_kw",
+    "rpm",
+    "rms",
+    "peak",
+    "crest_factor",
+    "std",
+    "kurtosis",
+    "skewness",
+    "p2p",
+    "spectral_centroid",
+    "spectral_entropy",
+    "spectral_energy",
+    "band_1x",
+    "band_1x_ratio",
+    "band_2x",
+    "band_2x_ratio",
+    "band_3x",
+    "band_3x_ratio",
+    "band_high",
+    "band_high_ratio"
+  ],
+  "n_samples": {
+    "train": 2716,
+    "val": 583,
+    "test": 577
+  },
+  "classification": {
+    "val": {
+      "accuracy": 0.9897084048027445,
+      "macro_f1": 0.9911222550826512
+    },
+    "test": {
+      "accuracy": 0.9948006932409013,
+      "macro_f1": 0.9960623382486918,
+      "confusion_matrix": [
+        [
+          100,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          80,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          65,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          25,
+          0
+        ],
+        [
+          3,
+          0,
+          0,
+          0,
+          304
+        ]
+      ],
+      "labels": [
+        "BEARING",
+        "BELT",
+        "IMBALANCE",
+        "MISALIGN",
+        "NORMAL"
+      ]
+    },
+    "feature_importance_top": [
+      {
+        "feature": "std",
+        "importance": 0.13145687732926592
+      },
+      {
+        "feature": "rms",
+        "importance": 0.11521831882722951
+      },
+      {
+        "feature": "spectral_energy",
+        "importance": 0.0726246877243234
+      },
+      {
+        "feature": "p2p",
+        "importance": 0.07141525134432353
+      },
+      {
+        "feature": "band_1x_ratio",
+        "importance": 0.061871284960759554
+      },
+      {
+        "feature": "spectral_centroid",
+        "importance": 0.06075617565291287
+      },
+      {
+        "feature": "peak",
+        "importance": 0.05942878535576963
+      },
+      {
+        "feature": "band_high_ratio",
+        "importance": 0.057549543419025774
+      },
+      {
+        "feature": "band_2x",
+        "importance": 0.057487896965002255
+      },
+      {
+        "feature": "band_2x_ratio",
+        "importance": 0.05724564957822101
+      }
+    ]
+  },
+  "anomaly_detection": {
+    "test": {
+      "accuracy": 0.7209705372616985,
+      "precision": 0.8609271523178808,
+      "recall": 0.48148148148148145,
+      "f1": 0.6175771971496437,
+      "roc_auc": 0.742550367957534,
+      "confusion_matrix": [
+        [
+          286,
+          21
+        ],
+        [
+          140,
+          130
+        ]
+      ]
+    }
+  }
+}

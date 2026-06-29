@@ -10,6 +10,8 @@
 import numpy as np
 import time
 import sys
+import os
+import glob
 from pathlib import Path
 
 # 프로젝트 경로 설정
@@ -22,6 +24,17 @@ try:
 except ImportError:
     print("❌ 설정 로드 실패. 프로젝트 루트에서 실행해주세요.")
     sys.exit(1)
+
+
+# 상태(한글) -> 영문 코드 (5클래스 분류 라벨)
+LABEL_KO_TO_EN = {
+    "정상": "NORMAL",
+    "축정렬불량": "MISALIGN",
+    "회전체불평형": "IMBALANCE",
+    "베어링불량": "BEARING",
+    "벨트느슨함": "BELT",
+}
+
 
 
 class SerialDataSimulator:
@@ -118,6 +131,142 @@ class VirtualSerialPort:
     def close(self):
         """포트 닫기"""
         print(f"✓ 가상 포트 닫음 (쓰기: {self.write_count}, 읽기: {self.read_count})")
+
+
+# ============================================================================
+# 실데이터 스트리머 (5클래스 분류 모델 테스트용)
+# ============================================================================
+
+class RealSignalStreamer:
+    """
+    data_new_format 의 실제 진동 CSV(헤더 9줄 + time/vibration)를 읽어
+    스트리밍/배치 형태로 제공한다. 5클래스 분류 모델 검증에 사용.
+    """
+
+    DEFAULT_ROOT = str(PROJECT_ROOT / "data_new_format")
+
+    def __init__(self, data_root: str = None):
+        self.data_root = data_root or self.DEFAULT_ROOT
+
+    # --- 메타데이터/신호 파싱 ---
+    @staticmethod
+    def parse_metadata(file_path, n_header: int = 9) -> dict:
+        meta = {}
+        with open(file_path, "r", encoding="utf-8") as f:
+            for _ in range(n_header):
+                line = f.readline()
+                if not line:
+                    break
+                parts = line.rstrip("\n").split(",")
+                if len(parts) >= 2:
+                    meta[parts[0].strip()] = parts[1].strip()
+        return meta
+
+    @staticmethod
+    def parse_motor_spec(file_path):
+        """Motor Spec 라인 -> (equipment_id, rpm, power_kw, current_a)."""
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("Motor Spec"):
+                    toks = [t.strip() for t in line.rstrip("\n").split(",")]
+                    vals = [t for t in toks[1:] if t != ""]
+
+                    def _f(x):
+                        try:
+                            return float(x)
+                        except (ValueError, TypeError):
+                            return float("nan")
+
+                    equip = vals[0] if len(vals) > 0 else "UNKNOWN"
+                    rpm = _f(vals[1]) if len(vals) > 1 else float("nan")
+                    kw = _f(vals[2]) if len(vals) > 2 else float("nan")
+                    cur = _f(vals[3]) if len(vals) > 3 else float("nan")
+                    return equip, rpm, kw, cur
+        return "UNKNOWN", float("nan"), float("nan"), float("nan")
+
+    @classmethod
+    def load_file(cls, file_path):
+        """
+        단일 CSV -> (signal: np.ndarray, info: dict).
+        info: label_ko, label_en, equipment_id, rpm, power_kw, n_samples
+        """
+        import pandas as pd
+        meta = cls.parse_metadata(file_path)
+        equip, rpm, kw, _cur = cls.parse_motor_spec(file_path)
+        df = pd.read_csv(file_path, skiprows=9, header=None,
+                         usecols=[0, 1], names=["time", "vib"])
+        sig = pd.to_numeric(df["vib"], errors="coerce").to_numpy()
+        sig = sig[~np.isnan(sig)]
+        label_ko = meta.get("Data Label", "?")
+        info = {
+            "label_ko": label_ko,
+            "label_en": LABEL_KO_TO_EN.get(label_ko, "UNKNOWN"),
+            "equipment_id": equip,
+            "rpm": rpm,
+            "power_kw": kw,
+            "n_samples": len(sig),
+            "source_file": os.path.basename(file_path),
+        }
+        return sig, info
+
+    # --- 파일 탐색 ---
+    def list_files(self, split: str = "train", label_ko: str = None):
+        """split 폴더의 CSV 목록. label_ko 지정 시 해당 상태만 필터."""
+        root = os.path.join(self.data_root, split)
+        files = sorted(glob.glob(os.path.join(root, "**", "*.csv"),
+                                 recursive=True))
+        if label_ko is None:
+            return files
+        out = []
+        for fp in files:
+            meta = self.parse_metadata(fp)
+            if meta.get("Data Label") == label_ko:
+                out.append(fp)
+        return out
+
+    def files_by_label(self, split: str = "train") -> dict:
+        """split 내 상태별 파일 목록 dict."""
+        result = {}
+        for fp in self.list_files(split):
+            meta = self.parse_metadata(fp)
+            result.setdefault(meta.get("Data Label", "?"), []).append(fp)
+        return result
+
+    def pick_one(self, label_ko: str, split: str = "train"):
+        """특정 상태의 첫 파일 로드 -> (signal, info)."""
+        files = self.list_files(split, label_ko=label_ko)
+        if not files:
+            raise FileNotFoundError(
+                f"'{label_ko}' 상태의 파일이 {split}에 없습니다.")
+        return self.load_file(files[0])
+
+    # --- 스트리밍 ---
+    @staticmethod
+    def stream_samples(signal, chunk_size: int = 1):
+        """신호를 chunk_size 단위로 순차 yield (시리얼 수신 모사)."""
+        for i in range(0, len(signal), chunk_size):
+            yield signal[i:i + chunk_size]
+
+
+def demo_real_signal_streaming():
+    """실데이터 상태별 신호 요약 출력 (5클래스)."""
+    print("\n" + "=" * 80)
+    print("실데이터 스트리머 - 상태별 신호 요약")
+    print("=" * 80)
+
+    streamer = RealSignalStreamer()
+    by_label = streamer.files_by_label("train")
+    if not by_label:
+        print("⚠️  data_new_format/train 에서 파일을 찾지 못했습니다.")
+        return
+
+    print(f"\n{'상태(한글)':<12}{'영문':<12}{'파일수':>6}  예시(설비/RPM/RMS)")
+    print("-" * 70)
+    for label_ko, files in by_label.items():
+        sig, info = streamer.load_file(files[0])
+        rms = float(np.sqrt(np.mean(sig ** 2)))
+        print(f"{label_ko:<12}{info['label_en']:<12}{len(files):>6}  "
+              f"{info['equipment_id']}/{info['rpm']:.0f}rpm/RMS={rms:.5f}")
 
 
 def test_data_generation():
@@ -271,13 +420,19 @@ if __name__ == "__main__":
     
     # 4. 합성 데이터셋 생성
     output_file = generate_synthetic_dataset()
-    
+
+    # 5. 실데이터 스트리머 데모 (5클래스 분류 모델 입력)
+    try:
+        demo_real_signal_streaming()
+    except Exception as e:
+        print(f"⚠️  실데이터 스트리머 데모 생략: {e}")
+
     print("\n" + "=" * 80)
     print("✅ 시뮬레이터 테스트 완료!")
     print("=" * 80)
     print(f"""
 다음 단계:
-1️⃣  test_serial_inference.py를 사용하여 실시간 테스트
-2️⃣  생성된 CSV 파일로 모델 재훈련 (선택사항)
+1️⃣  test_serial_inference.py를 사용하여 5클래스 실시간 분류 테스트
+2️⃣  RealSignalStreamer로 실제 진동 데이터 스트리밍
 3️⃣  실제 시리얼 포트 연결 및 테스트
     """)

@@ -1,38 +1,141 @@
 """
-Main orchestrator script for anomaly detection pipeline.
+Main orchestrator script — 두 파이프라인 통합 진입점.
 
-Usage:
-    python main.py --train          # Run full training pipeline
-    python main.py --infer          # Run inference system
-    python main.py --eda            # Run EDA only
+이 프로젝트에는 두 가지 파이프라인이 있으며, 모두 main.py 에서 시작합니다.
+
+[A] legacy   : 윈도우 원시신호 기반 다중 모델 학습/평가 (model_training.py)
+[B] standard : 표준 특징 테이블 기반 5클래스 고장 분류
+               (build_feature_table.py + train_from_feature_table.py + feature_extraction.py)
+
+사용법 (자세한 내용은 --help):
+    # [B] 표준화 파이프라인 (권장)
+    python main.py standard --all          # 특징생성 → 학습 → 추론 한번에
+    python main.py standard --build        # 1) 원시 CSV → 특징 테이블
+    python main.py standard --train        # 2) 특징 테이블 → 5클래스 학습
+    python main.py standard --infer        # 3) 학습 모델로 실시간 추론 테스트
+    python main.py standard --plot         # 4) 결과/특징 시각화(results/plots/)
+    python main.py standard --fft-steps    # FFT 계산 단계별 그래프
+
+    # [A] 레거시 파이프라인
+    python main.py legacy --train          # 다중 모델 학습/평가
+    python main.py legacy --eda            # EDA
+    python main.py legacy --infer          # 추론 데모
 """
 
 import argparse
 import sys
 import os
-import pandas as pd
-import numpy as np
 from pathlib import Path
 
-# Add package to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add package/scripts to path
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, PROJECT_ROOT)
+sys.path.insert(0, os.path.join(PROJECT_ROOT, "util"))
 
-from anomaly_detection import (
-    config,
-    data_loader,
-    preprocessing,
-    model_training,
-    evaluation,
-    inference_serial,
-)
-from integration import (
-    MLflowTracker,
-    FeatureStore,
-)
+# config 는 가벼우므로 즉시 import (data 경로 등 공용)
+from anomaly_detection import config
 
+# 무거운 모듈(matplotlib/torch 의존)은 각 함수 내부에서 지연 import 하여
+# 한 파이프라인의 의존성 문제가 다른 파이프라인을 막지 않도록 한다.
+
+
+# ============================================================================
+# [B] STANDARD PIPELINE — 표준 특징 테이블 기반 5클래스 분류
+# ============================================================================
+
+def standard_build(data_root=None, out_dir="feature_tables", regroup=True):
+    """1) 원시 진동 CSV → 표준 특징 테이블 생성."""
+    import build_feature_table as bft
+    data_root = data_root or config.DATA_DIR
+    print("\n" + "=" * 80)
+    print("[STANDARD 1/3] 특징 테이블 생성 (build_feature_table)")
+    print("=" * 80)
+    return bft.build_feature_tables(
+        data_root=data_root, out_dir=out_dir, regroup=regroup)
+
+
+def standard_train(table_dir="feature_tables", model="both"):
+    """2) 표준 특징 테이블 → 5클래스 분류(+이상탐지) 학습/평가."""
+    import train_from_feature_table as tft
+    print("\n" + "=" * 80)
+    print("[STANDARD 2/3] 5클래스 분류 학습 (train_from_feature_table)")
+    print("=" * 80)
+    return tft.run_training(table_dir=table_dir, model=model)
+
+
+def standard_infer(split="train", per_label=1, max_windows=3):
+    """3) 학습된 5클래스 모델로 실데이터 실시간 분류 테스트."""
+    import test_serial_inference as tsi
+    print("\n" + "=" * 80)
+    print("[STANDARD 3/3] 실시간 5클래스 추론 테스트 (test_serial_inference)")
+    print("=" * 80)
+    engine = tsi.test_realtime_classification_with_real_data(
+        per_label_files=per_label, max_windows=max_windows, split=split)
+    tsi.save_inference_results(engine)
+    return engine
+
+
+def standard_plot(split="test"):
+    """4) 학습 결과/특징을 이미지로 시각화 (results/plots/)."""
+    import visualize_feature_results as vfr
+    print("\n" + "=" * 80)
+    print("[STANDARD plot] 특징/모델 결과 시각화 (visualize_feature_results)")
+    print("=" * 80)
+    return vfr.run_visualization(split=split)
+
+
+def standard_fft_steps(status="회전체불평형"):
+    """FFT 특징 계산 과정을 단계별 그래프로 시각화 (results/plots/)."""
+    import visualize_fft_steps as vfs
+    print("\n" + "=" * 80)
+    print("[STANDARD fft-steps] FFT 계산 단계별 시각화 (visualize_fft_steps)")
+    print("=" * 80)
+    return vfs.run(status)
+
+
+def run_standard_pipeline(args):
+    """[B] 표준화 파이프라인 오케스트레이션."""
+    # 명시 플래그가 하나도 없으면 build/train/infer 를 기본 수행 (plot 은 제외)
+    do_all = args.all or not (args.build or args.train or args.infer
+                              or args.plot or args.fft_steps)
+    if args.all:
+        # --all 은 build/train/infer 모두 실행
+        args.build = args.train = args.infer = True
+        do_all = True
+
+    if args.build or do_all:
+        standard_build(data_root=args.data_root, out_dir=args.table_dir,
+                       regroup=not args.no_regroup)
+    if args.train or do_all:
+        standard_train(table_dir=args.table_dir, model=args.model)
+    if args.infer or do_all:
+        try:
+            standard_infer(split=args.split, per_label=args.per_label,
+                           max_windows=args.max_windows)
+        except Exception as e:
+            print(f"[WARN] 추론 테스트 생략: {e}")
+    if args.plot:
+        try:
+            standard_plot(split=args.split if args.split != "train" else "test")
+        except Exception as e:
+            print(f"[WARN] 시각화 생략: {e}")
+    if args.fft_steps:
+        try:
+            standard_fft_steps(status=args.status)
+        except Exception as e:
+            print(f"[WARN] FFT 단계 시각화 생략: {e}")
+
+    print("\n✓ [STANDARD] 파이프라인 완료!")
+
+
+# ============================================================================
+# [A] LEGACY PIPELINE — 윈도우 원시신호 기반 다중 모델
+# ============================================================================
 
 def run_eda(data_path: str = None):
     """Run exploratory data analysis."""
+    from anomaly_detection import data_loader
+
     print("\n" + "="*80)
     print("EXPLORATORY DATA ANALYSIS")
     print("="*80)
@@ -68,6 +171,13 @@ def run_training_pipeline(
         test_path: Path to test data directory
         use_mlflow: Enable MLflow tracking
     """
+    # 지연 import (matplotlib/torch 등 무거운 의존성)
+    import numpy as np
+    from anomaly_detection import (
+        data_loader, preprocessing, model_training, evaluation,
+    )
+    from integration import MLflowTracker, FeatureStore
+
     print("\n" + "="*80)
     print("ANOMALY DETECTION TRAINING PIPELINE")
     print("="*80)
@@ -244,6 +354,9 @@ def run_training_pipeline(
 
 def run_inference_demo():
     """Run inference demonstration with sample serial data."""
+    import numpy as np
+    from anomaly_detection import model_training, preprocessing, inference_serial
+
     print("\n" + "="*80)
     print("REAL-TIME INFERENCE DEMO")
     print("="*80)
@@ -290,79 +403,142 @@ def run_inference_demo():
     print("="*80)
 
 
+def _print_root_usage():
+    """서브커맨드 없이 실행했을 때 보여줄 사용법."""
+    print("""
+================================================================================
+  AI-Modeling-FFT  —  진동 이상탐지 / 고장분류 통합 진입점 (main.py)
+================================================================================
+
+두 가지 파이프라인을 제공합니다.
+
+[B] standard  (권장) — 표준 특징 테이블 기반 5클래스 고장 분류
+    python main.py standard --all       # 특징생성 → 학습 → 추론 한번에
+    python main.py standard --build     # 1) 원시 CSV → 특징 테이블
+    python main.py standard --train     # 2) 특징 테이블 → 5클래스 학습
+    python main.py standard --infer     # 3) 학습 모델 실시간 추론 테스트
+
+    옵션:
+      --data-root <dir>    원시 데이터 루트 (기본: config.DATA_DIR)
+      --table-dir <dir>    특징 테이블 폴더 (기본: feature_tables)
+      --model both|classifier|anomaly   (기본: both)
+      --split train|val|test            추론 테스트용 분할 (기본: train)
+      --per-label N        라벨별 사용 파일 수 (기본: 1)
+      --max-windows N      파일별 최대 윈도우 수 (기본: 3)
+      --no-regroup         재분할(stratified split) 비활성화
+
+[A] legacy — 윈도우 원시신호 기반 다중 모델 학습/평가
+    python main.py legacy --train       # 다중 모델 학습/평가
+    python main.py legacy --eda         # EDA
+    python main.py legacy --infer       # 추론 데모
+
+데이터 위치: data_new_format/{train,val,test}/
+자세한 옵션: python main.py standard --help  /  python main.py legacy --help
+================================================================================
+""")
+
+
 def main():
-    """Main entry point."""
+    """두 파이프라인 통합 진입점."""
     parser = argparse.ArgumentParser(
-        description="Anomaly Detection Pipeline for Pump/Motor Systems"
+        description="진동 이상탐지/고장분류 통합 진입점 (standard | legacy)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--train", action="store_true", help="Run training pipeline")
-    parser.add_argument("--eda", action="store_true", help="Run EDA only")
-    parser.add_argument("--infer", action="store_true", help="Run inference demo")
-    
-    # Data path arguments
-    parser.add_argument("--train-path", type=str, default=None, 
-                       help="Path to training data (file or directory)")
-    parser.add_argument("--val-path", type=str, default=None,
-                       help="Path to validation data (file or directory)")
-    parser.add_argument("--test-path", type=str, default=None,
-                       help="Path to test data (file or directory)")
-    parser.add_argument("--train-dir", type=str, default=None,
-                       help="Directory with training CSV files (alternative to --train-path)")
-    parser.add_argument("--val-dir", type=str, default=None,
-                       help="Directory with validation CSV files (alternative to --val-path)")
-    parser.add_argument("--test-dir", type=str, default=None,
-                       help="Directory with test CSV files (alternative to --test-path)")
-    
+    subparsers = parser.add_subparsers(dest="pipeline")
+
+    # ---- [B] standard 서브커맨드 ----
+    sp = subparsers.add_parser(
+        "standard", help="표준 특징 테이블 기반 5클래스 고장 분류 (권장)")
+    sp.add_argument("--all", action="store_true",
+                    help="build → train → infer 모두 실행")
+    sp.add_argument("--build", action="store_true", help="원시 CSV → 특징 테이블")
+    sp.add_argument("--train", action="store_true", help="특징 테이블 → 5클래스 학습")
+    sp.add_argument("--infer", action="store_true", help="학습 모델 실시간 추론 테스트")
+    sp.add_argument("--plot", action="store_true",
+                    help="학습 결과/특징을 이미지로 시각화 (results/plots/)")
+    sp.add_argument("--fft-steps", action="store_true", dest="fft_steps",
+                    help="FFT 특징 계산 과정을 단계별 그래프로 시각화")
+    sp.add_argument("--status", type=str, default="회전체불평형",
+                    help="--fft-steps 대상 고장 상태(한글, 기본: 회전체불평형)")
+    sp.add_argument("--data-root", type=str, default=None,
+                    help="원시 데이터 루트 (기본: config.DATA_DIR)")
+    sp.add_argument("--table-dir", type=str, default="feature_tables",
+                    help="특징 테이블 폴더 (기본: feature_tables)")
+    sp.add_argument("--model", type=str, default="both",
+                    choices=["both", "classifier", "anomaly"],
+                    help="학습 대상 (기본: both)")
+    sp.add_argument("--split", type=str, default="train",
+                    choices=["train", "val", "test"],
+                    help="추론 테스트용 분할 (기본: train)")
+    sp.add_argument("--per-label", type=int, default=1,
+                    help="라벨별 사용 파일 수 (기본: 1)")
+    sp.add_argument("--max-windows", type=int, default=3,
+                    help="파일별 최대 윈도우 수 (기본: 3)")
+    sp.add_argument("--no-regroup", action="store_true",
+                    help="재분할(stratified split) 비활성화")
+
+    # ---- [A] legacy 서브커맨드 ----
+    lp = subparsers.add_parser(
+        "legacy", help="윈도우 원시신호 기반 다중 모델 학습/평가")
+    lp.add_argument("--train", action="store_true", help="학습 파이프라인 실행")
+    lp.add_argument("--eda", action="store_true", help="EDA 만 실행")
+    lp.add_argument("--infer", action="store_true", help="추론 데모 실행")
+    lp.add_argument("--train-path", type=str, default=None,
+                    help="학습 데이터 경로 (파일 또는 폴더)")
+    lp.add_argument("--val-path", type=str, default=None,
+                    help="검증 데이터 경로 (파일 또는 폴더)")
+    lp.add_argument("--test-path", type=str, default=None,
+                    help="테스트 데이터 경로 (파일 또는 폴더)")
+    lp.add_argument("--train-dir", type=str, default=None,
+                    help="학습 CSV 폴더 (--train-path 대체)")
+    lp.add_argument("--val-dir", type=str, default=None,
+                    help="검증 CSV 폴더 (--val-path 대체)")
+    lp.add_argument("--test-dir", type=str, default=None,
+                    help="테스트 CSV 폴더 (--test-path 대체)")
+
     args = parser.parse_args()
-    
-    # Resolve data paths (dirs have priority over paths if both specified)
+
+    if args.pipeline is None:
+        _print_root_usage()
+        sys.exit(0)
+
+    if args.pipeline == "standard":
+        run_standard_pipeline(args)
+        return
+
+    # ---- legacy 라우팅 ----
     train_path = args.train_dir or args.train_path
     val_path = args.val_dir or args.val_path
     test_path = args.test_dir or args.test_path
 
-    # If no arguments, show help and exit
     if not (args.train or args.eda or args.infer):
-        print("[INFO] No command specified. Use --help for usage instructions.")
-        print("[INFO] Available commands:")
-        print("  python main.py --train              # Run training pipeline")
-        print("  python main.py --eda                # Run EDA only")
-        print("  python main.py --infer              # Run inference demo")
-        print("  python main.py --train --eda --infer  # Run all")
-        print("\n[INFO] Data location: data_new_format/")
-        print("       - data_new_format/train/  (training data)")
-        print("       - data_new_format/val/    (validation data)")
-        print("       - data_new_format/test/   (test data)")
+        print("[INFO] legacy: 명령이 없습니다. 사용 가능한 옵션:")
+        print("  python main.py legacy --train   # 학습 파이프라인")
+        print("  python main.py legacy --eda     # EDA")
+        print("  python main.py legacy --infer   # 추론 데모")
         sys.exit(0)
-    
-    # Validate data paths for training
-    if args.train and not all([train_path or config.TRAIN_DATA_DIR, 
-                                val_path or config.VAL_DATA_DIR, 
-                                test_path or config.TEST_DATA_DIR]):
-        print("\n[ERROR] Training data not found!")
-        print("[INFO] Please ensure data exists in data_new_format/ folder:")
+
+    if args.train and not all([train_path or config.TRAIN_DATA_DIR,
+                               val_path or config.VAL_DATA_DIR,
+                               test_path or config.TEST_DATA_DIR]):
+        print("\n[ERROR] 학습 데이터를 찾을 수 없습니다!")
+        print("[INFO] data_new_format/ 폴더를 확인하세요:")
         print("       - data_new_format/train/")
         print("       - data_new_format/val/")
         print("       - data_new_format/test/")
         sys.exit(1)
 
-    # Run EDA
     if args.eda or (args.train and not train_path):
-        # EDA is useful for generated data or when no training is specified
         run_eda()
 
-    # Run training
     if args.train:
-        models, preprocessor, evaluation_results = run_training_pipeline(
-            train_path=train_path,
-            val_path=val_path,
-            test_path=test_path
-        )
+        run_training_pipeline(
+            train_path=train_path, val_path=val_path, test_path=test_path)
 
-    # Run inference
     if args.infer:
         run_inference_demo()
 
-    print("\n✓ Pipeline execution complete!")
+    print("\n✓ [LEGACY] 파이프라인 완료!")
 
 
 if __name__ == "__main__":

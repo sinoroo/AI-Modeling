@@ -11,7 +11,8 @@ FFT 기반 이상탐지 시스템의 모든 파일과 폴더 설명
 ```
 AI-Modeling-FFT/
 ├── 📂 anomaly_detection/          # 핵심 ML 모듈
-├── 📂 data_new_format/             # 학습 데이터
+├── 📂 data_new_format/             # 학습 데이터 (5클래스 진동 CSV)
+├── 📂 feature_tables/              # ⭐ NEW: 표준화 특징 테이블 (윈도우=1행)
 ├── 📂 models/                      # 저장된 모델 파일
 ├── 📂 results/                     # 모델 평가 결과
 ├── 📂 util/                        # 유틸리티 스크립트
@@ -23,6 +24,27 @@ AI-Modeling-FFT/
 ├── 📄 메인 스크립트들             # Python 파일들
 └── 📄 가이드 문서들               # Markdown 파일들
 ```
+
+## 🧭 두 가지 파이프라인 (중요)
+
+이 프로젝트에는 **독립적인 두 갈래**의 파이프라인이 있습니다.
+
+```
+[A] 레거시 파이프라인 (윈도우 원시신호 기반, 15개 모델)
+    main.py → anomaly_detection/model_training.py → evaluation.py
+
+[B] 표준화 파이프라인 (특징 테이블 기반, 5클래스 분류) ⭐ NEW
+    build_feature_table.py        (원시 CSV → 표준 특징 테이블)
+        └─ anomaly_detection/feature_extraction.py (공용 특징 추출)
+    train_from_feature_table.py   (특징 테이블 → 5클래스 분류 + 이상탐지)
+        └─ sklearn 직접 사용 (model_training.py 와 무관)
+    util/test_serial_inference.py (학습된 5클래스 모델로 실시간 추론)
+        └─ anomaly_detection/feature_extraction.py (동일 특징 보장)
+```
+
+> ⚠️ `train_from_feature_table.py` 는 `anomaly_detection.model_training` 을
+> **사용하지 않습니다**. sklearn 을 직접 호출하는 독립 학습 스크립트입니다.
+> 두 파이프라인을 잇는 공통 기반은 `feature_extraction.py` 입니다.
 
 
 # ============================================================================
@@ -206,14 +228,39 @@ metrics = evaluator.compute_metrics(y_test, y_pred)
 ✓ 기계 상태 모니터링
 ```
 
+---
+
+## 📄 anomaly_detection/feature_extraction.py ⭐ NEW 핵심
+**기능**: 학습/추론 **공용** 특징 추출 모듈 (단일 진실원)
+**역할**:
+```
+✓ build_feature_table.py(오프라인 학습)와 util 추론이 동일한 특징을 쓰도록 보장
+✓ 고정 윈도우 분할(4000샘플=1초, 50% overlap)
+✓ 시간영역 특징: rms, peak, crest_factor, std, kurtosis, skewness, p2p
+✓ 주파수영역 특징: spectral_centroid/entropy/energy + 회전차수(order) 대역 에너지
+   (band_1x/2x/3x/high 및 각 비율) → RPM 기반 설비 간 비교
+✓ 진폭 Z-score 정규화(설비별 정상 기준)
+✓ 5클래스 라벨 매핑 (LABEL_MAP / LABEL_EN_TO_KO)
+```
+**핵심 상수/함수**:
+```python
+from anomaly_detection import feature_extraction as fe
+
+fe.FEATURE_COLUMNS          # 학습에 사용된 20개 특징 컬럼 순서(고정)
+fe.WINDOW_SIZE              # 4000
+vec = fe.extract_feature_vector(window, rpm=1730, power_kw=2.2)  # (20,) 벡터
+sig = fe.normalize_amplitude(signal, mean, std)
+windows = fe.make_windows(signal)   # [(window, padded), ...]
+```
+**연계**: `build_feature_table.py`, `util/test_serial_inference.py` 가 import
 
 # ============================================================================
 # 🚀 메인 스크립트: Root Python 파일들
 # ============================================================================
 
 ## 📄 main.py
-**목적**: 프로젝트의 메인 진입점
-**기능**: 폐쇄 루프 훈련 및 평가 파이프라인
+**목적**: 프로젝트의 메인 진입점 (레거시 파이프라인 [A])
+**기능**: 폐쇄 루프 훈련 및 평가 파이프라인 (model_training.py 사용)
 **실행**:
 ```bash
 python main.py
@@ -221,8 +268,48 @@ python main.py
 
 ---
 
-## 📄 anomaly_detection_comparison.py ⭐ 추천
-**목적**: 모든 이상탐지 모델 자동 비교 및 분석
+## 📄 build_feature_table.py ⭐ NEW (표준화 파이프라인 [B] 1단계)
+**목적**: 원시 진동 CSV → 머신러닝용 **표준 특징 테이블** 생성
+**기능**:
+```
+✓ data_new_format 의 모든 CSV(길이 12000/500/300 혼재)를 고정 윈도우로 통일
+✓ 설비별 정상 기준 진폭 Z-score 정규화 (동력/설비 차이 흡수)
+✓ 회전차수(order) 기반 FFT 특징 추출 (RPM 사용)
+✓ 윈도우=1행 형태의 feature_table_{train,val,test}.csv 생성
+✓ --regroup: 설비×라벨 층화 후 파일단위 70/15/15 재분할(데이터 누수 방지)
+✓ normalization_stats.json 저장(추론 시 재사용)
+```
+**연계**: `anomaly_detection/feature_extraction.py` 를 import (model_training 아님)
+**실행**:
+```bash
+python build_feature_table.py --regroup
+```
+
+---
+
+## 📄 train_from_feature_table.py ⭐ NEW (표준화 파이프라인 [B] 2단계)
+**목적**: 표준 특징 테이블 → **5클래스 고장 분류** + 이상탐지 모델 학습/평가
+**기능**:
+```
+✓ 과제1 다중분류(5클래스): 정상/축정렬불량/회전체불평형/베어링불량/벨트느슨함
+   - RandomForestClassifier(class_weight='balanced')
+   - test 정확도 ~99.5%, macro-F1 ~0.996
+✓ 과제2 이상탐지(One-Class): 정상만 학습 → IsolationForest
+✓ 특징 중요도 / classification report / confusion matrix 출력
+✓ 결과: results/feature_table_evaluation.json
+```
+**중요**: sklearn 을 직접 사용하며 `anomaly_detection.model_training` 과 **무관**
+**실행**:
+```bash
+python train_from_feature_table.py              # 분류 + 이상탐지
+python train_from_feature_table.py --model classifier
+```
+
+---
+
+## 📄 analysis/anomaly_detection_comparison.py
+**위치**: `analysis/` 폴더 (루트가 아님 — 실행 시 `python analysis/anomaly_detection_comparison.py`)
+**목적**: 모든 이상탐지 모델 자동 비교 및 분석 (탐색용, 핵심 파이프라인과 별개)
 **기능**:
 ```
 ✓ 9개 모든 이상탐지 모델 훈련
@@ -305,9 +392,17 @@ CSV 포맷: 메타데이터 9줄 + 데이터
 - 라인 10+: time, vibration 컬럼 (시계열 진동 데이터)
 ```
 
-**라벨**:
-- `정상`: Normal (0)
-- `축정렬불량`: Abnormal (1)
+**라벨 (5클래스)**:
+| 한글 | 영문 | label_no | 이상여부 |
+|------|------|----------|----------|
+| 정상 | NORMAL | 0 | 0 |
+| 축정렬불량 | MISALIGN | 1 | 1 |
+| 회전체불평형 | IMBALANCE | 2 | 1 |
+| 베어링불량 | BEARING | 3 | 1 |
+| 벨트느슨함 | BELT | 4 | 1 |
+
+**동력별 구성**: 2.2kW / 3.7kW / 5.5kW 모터(설비 11종, RPM 상이)
+→ 회전차수(order) 정규화로 설비 간 비교 가능
 
 
 # ============================================================================
@@ -318,12 +413,26 @@ CSV 포맷: 메타데이터 9줄 + 데이터
 **역할**: 모델 평가 결과 저장
 ```
 results/
-├── model_random_forest_evaluation.json
-├── model_isolation_forest_evaluation.json
-├── model_autoencoder_evaluation.json
-├── model_lstm_evaluation.json
-└── model_*_evaluation.json           # 각 모델별 평가 결과
+├── model_randomforest_evaluation.json    # 레거시 파이프라인[A] 모델별 결과
+├── model_isolationforest_evaluation.json
+├── model_*_evaluation.json
+└── feature_table_evaluation.json         # ⭐ NEW: 표준화[B] 5클래스/이상탐지 결과
 ```
+
+---
+
+## 📂 feature_tables/ ⭐ NEW
+**역할**: 표준화된 특징 테이블(윈도우=1행) 저장
+```
+feature_tables/
+├── feature_table_train.csv      # 학습용 특징 테이블
+├── feature_table_val.csv        # 검증용
+├── feature_table_test.csv       # 테스트용
+└── normalization_stats.json     # 설비별 정상 기준 통계(추론 재사용)
+```
+**생성**: `python build_feature_table.py --regroup`
+**컬럼**: source_file, equipment_id, power_kw, rpm, window_index, padded,
+rms~p2p(시간영역), spectral_*/band_*(주파수영역), label_name, label_no, is_anomaly
 
 ---
 
@@ -362,29 +471,33 @@ anomaly_detection_results_quick/
 # 🛠️ 유틸리티 폴더: util/
 # ============================================================================
 
-## 📄 util/serial_data_simulator.py
-**목적**: 실시간 센서 데이터 시뮬레이션
+## 📄 util/serial_data_simulator.py ⭐ 업데이트
+**목적**: 실시간 센서 데이터 시뮬레이션 및 실데이터 스트리밍
 **기능**:
 ```
-✓ 정상/이상 신호 생성
-✓ 실시간 스트리밍 시뮬레이션
-✓ 직렬 포트 모의
+✓ 정상/이상 합성 신호 생성 (SerialDataSimulator)
+✓ 실시간 스트리밍 시뮬레이션 / 직렬 포트 모의
+✓ RealSignalStreamer: data_new_format 실제 CSV를 상태별 로드/스트리밍
+  (설비ID·RPM·동력·라벨 메타 파싱) → 5클래스 모델 입력
 ```
 
 ---
 
-## 📄 util/test_serial_inference.py
-**목적**: 실시간 이상탐지 테스트
-**기능**:
+## 📄 util/test_serial_inference.py ⭐ 업데이트
+**목적**: 학습된 **5클래스 고장 분류 모델**로 실시간 추론 테스트
+**주요 클래스**:
 ```
-✓ 시뮬레이션 데이터로 실시간 추론 테스트
-✓ RandomForestClassifier 사용
-✓ 성능 평가
+✓ FaultClassifierEngine  : models/clf_random_forest.pkl + clf_scaler.pkl +
+  normalization_stats.json 로드 → feature_extraction 동일 특징으로 5클래스 예측
+✓ RealtimeDataBuffer      : 4000샘플(1초) FIFO 버퍼
+✓ RealtimeInferenceEngine : (레거시) 더미 이진 모델 데모
 ```
 **실행**:
 ```bash
-python util/test_serial_inference.py
+python util/test_serial_inference.py --mode classify --split train  # 5클래스(권장)
+python util/test_serial_inference.py --mode legacy                  # 레거시 더미 데모
 ```
+**연계**: `anomaly_detection/feature_extraction.py`, `util/serial_data_simulator.py`
 
 ---
 
@@ -553,12 +666,18 @@ python util/verify_system.py
 **역할**: 훈련된 모델 저장
 ```
 models/
+# [A] 레거시 파이프라인 (main.py / model_training.py)
 ├── random_forest_model.pkl         # 랜덤 포레스트
 ├── isolation_forest_model.pkl      # 이솔레이션 포레스트
 ├── one_class_svm_model.pkl         # One-Class SVM
 ├── autoencoder_model.pt            # Autoencoder (PyTorch)
 ├── lstm_model.pt                   # LSTM (PyTorch)
-└── scaler.pkl                      # 데이터 정규화 스케일러
+├── scaler.pkl                      # 데이터 정규화 스케일러
+# [B] 표준화 파이프라인 (train_from_feature_table.py) ⭐ NEW
+├── clf_random_forest.pkl           # 5클래스 고장 분류기
+├── clf_scaler.pkl                  # 분류기용 특징 스케일러
+├── anomaly_isolation_forest.pkl    # 이상탐지(One-Class) 모델
+└── anomaly_scaler.pkl              # 이상탐지용 스케일러
 ```
 
 
@@ -678,25 +797,39 @@ metrics = ModelEvaluator.compute_metrics(y_test, y_pred)
 # ============================================================================
 
 ```
+[A] 레거시 파이프라인 (윈도우 원시신호 기반, 15개 모델)
+
 사용자
   ↓
-RUN_ANOMALY_DETECTION_COMPARISON.md ← 시작
-  ↓
-anomaly_detection_comparison.py (메인 스크립트)
+main.py legacy --train|--eda|--infer   (통합 진입점)
   ├─→ anomaly_detection/config.py (설정)
   ├─→ anomaly_detection/data_loader.py (데이터 로드)
   ├─→ anomaly_detection/preprocessing.py (전처리)
   ├─→ anomaly_detection/model_training.py (모델 훈련) ⭐
-  │   └─→ 15개 모델 구현
   └─→ anomaly_detection/evaluation.py (평가)
-        └─→ 메트릭 계산
+
+  ※ analysis/anomaly_detection_comparison.py 는 탐색용 비교 스크립트(별개)
+
+[B] 표준화 파이프라인 (특징 테이블 기반, 5클래스 분류) ⭐ NEW
+
+사용자
+  ↓
+main.py standard --all|--build|--train|--infer   (통합 진입점)
+  ↓
+data_new_format/ (원시 진동 CSV)
+  ↓  build_feature_table.py --regroup
+  └─→ anomaly_detection/feature_extraction.py (공용 특징 추출) ⭐
+  ↓
+feature_tables/feature_table_{train,val,test}.csv + normalization_stats.json
+  ↓  train_from_feature_table.py   (sklearn 직접, model_training 미사용)
+  └─→ models/clf_random_forest.pkl, clf_scaler.pkl,
+        anomaly_isolation_forest.pkl, anomaly_scaler.pkl
+  ↓  util/test_serial_inference.py --mode classify
+  └─→ anomaly_detection/feature_extraction.py (동일 특징) → 실시간 5클래스 추론
 
 결과
-  ├─→ anomaly_detection_results_quick/
-  │   ├─→ .json (상세 결과)
-  │   ├─→ .csv (메트릭)
-  │   └─→ .png (그래프)
-  └─→ models/ (저장된 모델)
+  ├─→ results/feature_table_evaluation.json
+  └─→ util/inference_results.json
 ```
 
 
@@ -799,6 +932,6 @@ A: anomaly_detection/model_training.py에 train_* 메서드 추가
 
 ---
 
-마지막 업데이트: 2024-12-19
+마지막 업데이트: 2026-06-22
 문의: 각 파일의 주석과 docstring 참고
 """

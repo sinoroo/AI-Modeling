@@ -12,57 +12,91 @@ A production-ready, end-to-end anomaly detection system for industrial pump and 
 - **Model Evaluation**: Accuracy, precision, recall, F1-score, ROC-AUC, confusion matrices
 - **Extensible Architecture**: Modular design for easy extension
 
-## 🚀 Quick Start
+## 🚀 Quick Start — 모든 실행은 `main.py` 에서 시작합니다
 
-### 1️⃣ Training Pipeline
+이 프로젝트에는 **두 개의 파이프라인**이 있으며, 둘 다 `main.py` 의 서브커맨드로 실행합니다.
+
+| 파이프라인 | 서브커맨드 | 설명 |
+|-----------|-----------|------|
+| **[B] standard** (권장) | `python main.py standard` | 표준 특징 테이블 기반 **5클래스 고장 분류** (정상/축정렬불량/회전체불평형/베어링불량/벨트느슨함) |
+| **[A] legacy** | `python main.py legacy` | 윈도우 원시신호 기반 다중 모델 학습/평가 (MLflow 연동) |
+
+> 인자 없이 `python main.py` 를 실행하면 전체 사용법이 출력됩니다.
+
+### [B] 표준화 파이프라인 (권장)
+
 ```bash
-# Activate virtual environment
+# 가상환경 활성화 (선택)
 .\.venv\Scripts\Activate.ps1
 
-# Run full training with MLflow tracking
-python main.py --train
+# 한 번에: 특징생성 → 학습 → 추론
+python main.py standard --all
 
-# View MLflow results
+# 단계별 실행
+python main.py standard --build     # 1) 원시 CSV → 표준 특징 테이블 (feature_tables/)
+python main.py standard --train     # 2) 특징 테이블 → 5클래스 분류 + 이상탐지 학습
+python main.py standard --infer     # 3) 학습 모델로 실데이터 실시간 추론 테스트
+
+# 주요 옵션
+python main.py standard --train --model classifier   # both|classifier|anomaly
+python main.py standard --infer --split test --per-label 2 --max-windows 5
+python main.py standard --build --no-regroup         # stratified 재분할 비활성화
+```
+
+산출물:
+- `feature_tables/` — train/val/test 특징 테이블 (CSV)
+- `models/clf_random_forest.pkl`, `clf_scaler.pkl` — 5클래스 분류기
+- `models/anomaly_isolation_forest.pkl`, `anomaly_scaler.pkl` — 이상탐지기
+- `results/feature_table_evaluation.json` — 평가 결과
+- `util/inference_results.json` — 추론 테스트 결과
+
+### [A] 레거시 파이프라인
+
+```bash
+python main.py legacy --train       # 다중 모델 학습/평가
+python main.py legacy --eda         # 탐색적 데이터 분석(EDA)
+python main.py legacy --infer       # 추론 데모
+
+# MLflow 결과 확인
 mlflow ui --backend-store-uri file:./integration/mlruns
 ```
 
-### 2️⃣ Data Analysis
-```bash
-# Analyze 2D classical ML features
-python analysis/analyze_2d_data.py
+### 데이터 분석 도구 (analysis/) — 선택
 
-# Analyze 3D deep learning features
-python analysis/analyze_3d_array.py
+```bash
+python analysis/analyze_2d_data.py                    # 2D 특징 분석
+python analysis/analyze_3d_array.py                   # 3D 배열 구조 분석
+python analysis/anomaly_detection_comparison.py       # 이상탐지 모델 비교 (analysis/ 경로 주의)
 ```
 
-### 3️⃣ Real-Time Inference (Utility)
+### 실시간 추론 유틸리티 (util/) — 선택
+
 ```bash
-# Generate synthetic sensor data
-python util/serial_data_simulator.py
-
-# Run real-time inference test
-python util/test_serial_inference.py
-
-# Verify system setup
-python util/verify_system.py
+python util/serial_data_simulator.py     # 합성/실데이터 스트리밍 시뮬레이터
+python util/test_serial_inference.py     # 실시간 5클래스 추론 테스트
+python util/verify_system.py             # 시스템 점검
 ```
+
 
 ## Project Structure
 
 ```
 AI-Modeling/
-├── 📌 Core Pipeline
-│   ├── main.py                            # Full training pipeline orchestrator
+├── 📌 통합 진입점 / Core Pipeline
+│   ├── main.py                            # ⭐ 두 파이프라인 통합 진입점 (standard | legacy)
+│   ├── build_feature_table.py             # [B] 1단계: 원시 CSV → 표준 특징 테이블
+│   ├── train_from_feature_table.py        # [B] 2단계: 특징 테이블 → 5클래스 학습 (sklearn 직접)
 │   ├── requirements.txt                   # Python dependencies
 │   └── README.md                          # This file
 │
 ├── 📦 Core Modules (anomaly_detection/)
 │   ├── config.py                          # Configuration (data_new_format based)
-│   ├── data_loader.py                     # Data I/O (new format only)
-│   ├── preprocessing.py                   # Feature engineering pipeline
-│   ├── model_training.py                  # Model training orchestrator
-│   ├── evaluation.py                      # Metrics & validation
-│   └── inference_serial.py                # Real-time serial inference
+│   ├── feature_extraction.py              # ⭐ [B] 공용 특징추출 (학습/추론 동일 보장)
+│   ├── data_loader.py                     # [A] Data I/O (new format only)
+│   ├── preprocessing.py                   # [A] Feature engineering pipeline
+│   ├── model_training.py                  # [A] Model training orchestrator
+│   ├── evaluation.py                      # [A] Metrics & validation
+│   └── inference_serial.py                # [A] Real-time serial inference
 │
 ├── 📊 Data Analysis (analysis/)
 │   ├── analyze_3d_array.py               # 3D array structure analysis

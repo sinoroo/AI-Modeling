@@ -95,6 +95,20 @@ class ClassicalModelTrainer:
         # Flatten windows for classical ML
         X_train_flat = X_train.reshape(X_train.shape[0], -1)
         
+        # Data validation
+        nan_count = np.isnan(X_train_flat).sum()
+        inf_count = np.isinf(X_train_flat).sum()
+        
+        if nan_count > 0 or inf_count > 0:
+            print(f"[ClassicalML] WARNING: Found {nan_count} NaN, {inf_count} Inf values!")
+            print(f"[ClassicalML] Cleaning data...")
+            # Remove NaN and Inf
+            mask = np.isfinite(X_train_flat).all(axis=1)
+            X_train_flat = X_train_flat[mask]
+            print(f"[ClassicalML] Reduced samples from {X_train.shape[0]} to {X_train_flat.shape[0]}")
+        
+        print(f"[ClassicalML] Training with {X_train_flat.shape[0]} samples, {X_train_flat.shape[1]} features")
+        
         model = OneClassSVM(**params)
         model.fit(X_train_flat)
         print("[ClassicalML] One-Class SVM training complete")
